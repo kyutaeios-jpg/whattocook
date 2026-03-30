@@ -77,13 +77,29 @@ function LoginGate({ onAuth }) {
   const [pw, setPw] = useState("");
   const [shake, setShake] = useState(false);
 
-  const handle = (e) => {
+  const [loading, setLoading] = useState(false);
+
+  const handle = async (e) => {
     e.preventDefault();
-    if (pw === import.meta.env.VITE_ADMIN_PASSWORD) {
-      onAuth();
-    } else {
+    setLoading(true);
+    try {
+      const API_URL = import.meta.env.VITE_API_URL || "";
+      const res = await fetch(`${API_URL}/api/admin/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: pw }),
+      });
+      if (res.ok) {
+        onAuth();
+      } else {
+        setShake(true);
+        setTimeout(() => setShake(false), 400);
+      }
+    } catch {
       setShake(true);
       setTimeout(() => setShake(false), 400);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -121,8 +137,8 @@ function LoginGate({ onAuth }) {
           onChange={(e) => setPw(e.target.value)}
           style={{ ...input, marginBottom: 16, textAlign: "center" }}
         />
-        <button type="submit" style={{ ...btnPrimary, width: "100%" }}>
-          로그인
+        <button type="submit" disabled={loading} style={{ ...btnPrimary, width: "100%", opacity: loading ? 0.6 : 1 }}>
+          {loading ? "확인 중..." : "로그인"}
         </button>
       </form>
     </div>

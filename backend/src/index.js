@@ -28,6 +28,19 @@ app.get("/api/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
+// ── 어드민 인증 ──
+
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin1234";
+
+app.post("/api/admin/login", (req, res) => {
+  const { password } = req.body;
+  if (password === ADMIN_PASSWORD) {
+    res.json({ ok: true });
+  } else {
+    res.status(401).json({ error: "비밀번호가 틀립니다" });
+  }
+});
+
 // ── 레시피 CRUD ──
 
 app.get("/api/recipes", async (_req, res) => {
