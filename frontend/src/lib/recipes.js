@@ -272,11 +272,12 @@ export function saveRecipes(list) {
 // --- 매칭/유사도 ---
 
 function normalize(name) {
+  if (typeof name !== "string") return "";
   return name.trim().replace(/\s+/g, "").toLowerCase();
 }
 
 function ingredientSet(recipe) {
-  return new Set((recipe.ingredients || []).map((i) => normalize(i.name)));
+  return new Set((recipe.ingredients || []).map((i) => normalize(typeof i.name === "string" ? i.name : "")).filter(Boolean));
 }
 
 export function computeMatch(recipe, selectedSet) {
@@ -293,7 +294,11 @@ export function computeMatch(recipe, selectedSet) {
   }
 
   const score = recipeSet.size === 0 ? 0 : matched.length / recipeSet.size;
-  return { score, matched, missing };
+  const matchedCount = matched.length;
+  // 복합 점수: 내 재료 포함 개수(가중 0.6) + 일치율(가중 0.4)
+  const rankScore = selectedSet.size === 0 ? 0
+    : (matchedCount / selectedSet.size) * 0.6 + score * 0.4;
+  return { score, matchedCount, rankScore, matched, missing };
 }
 
 export function computeSimilarity(r1, r2) {
@@ -324,7 +329,7 @@ export function getAllIngredients(recipes) {
   const set = new Set();
   for (const r of recipes) {
     for (const i of r.ingredients || []) {
-      set.add(i.name.trim());
+      if (typeof i.name === "string") set.add(i.name.trim());
     }
   }
   return [...set].sort();

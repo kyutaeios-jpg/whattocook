@@ -1,333 +1,266 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import {
-  loadRecipes,
   computeMatch,
   computeSimilarity,
   getAllIngredients,
   getAllCategories,
 } from "../lib/recipes";
+import { fetchRecipes, fetchCachedCategories, fetchSynonyms } from "../lib/api";
 
-/* ───── 카테고리별 이모지 ───── */
+/* ───── 카테고리 이모지 ───── */
 const EMOJI = {
-  한식: "🍚",
-  중식: "🥟",
-  일식: "🍣",
-  양식: "🍝",
-  디저트: "🍰",
-  기타: "🍽️",
+  한식: "🍚", 중식: "🥟", 일식: "🍣", 양식: "🍝", 디저트: "🍰", 기타: "🍽️",
 };
 
-/* ───── 스타일 상수 ───── */
-const S = {
-  layout: {
-    display: "flex",
-    height: "100vh",
-    overflow: "hidden",
-  },
+function getYoutubeId(recipe) {
+  if (recipe.youtubeId) return recipe.youtubeId;
+  if (!recipe.url) return "";
+  try {
+    const u = new URL(recipe.url);
+    if (u.hostname.includes("youtu.be")) return u.pathname.slice(1);
+    return u.searchParams.get("v") || "";
+  } catch { return ""; }
+}
 
-  /* 사이드바 */
-  sidebar: {
-    width: 260,
-    minWidth: 260,
-    background: "var(--bg-sidebar)",
-    borderRight: "1px solid var(--border)",
-    display: "flex",
-    flexDirection: "column",
-    overflow: "hidden",
-  },
-  sidebarHeader: {
-    padding: "20px 16px 12px",
-    fontFamily: "var(--serif)",
-    fontSize: 18,
-    fontWeight: 700,
-    color: "var(--accent)",
-    borderBottom: "1px solid var(--border)",
-  },
-  searchBox: {
-    margin: "12px 12px 8px",
-    padding: "8px 10px",
-    background: "var(--bg-input)",
-    border: "1px solid var(--border)",
-    borderRadius: 6,
-    color: "var(--text-bright)",
-    fontSize: 13,
-    outline: "none",
-    width: "calc(100% - 24px)",
-  },
-  sidebarScroll: {
-    flex: 1,
-    overflowY: "auto",
-    padding: "4px 12px 16px",
-  },
-  catLabel: {
-    fontSize: 11,
-    fontWeight: 600,
-    color: "var(--text-muted)",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-    margin: "14px 0 6px",
-  },
-  chipWrap: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: 6,
-  },
-
-  /* 메인 */
-  main: {
-    flex: 1,
-    display: "flex",
-    flexDirection: "column",
-    overflow: "hidden",
-  },
-  topBar: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: "16px 24px",
-    borderBottom: "1px solid var(--border)",
-  },
-  tabs: {
-    display: "flex",
-    gap: 4,
-  },
-  badge: {
-    fontFamily: "var(--mono)",
-    fontSize: 12,
-    color: "var(--accent)",
-  },
-  grid: {
-    flex: 1,
-    overflowY: "auto",
-    padding: 24,
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
-    gap: 16,
-    alignContent: "start",
-  },
-
-  /* 상세 패널 */
-  panel: {
-    width: 380,
-    minWidth: 380,
-    background: "var(--bg-sidebar)",
-    borderLeft: "1px solid var(--border)",
-    overflowY: "auto",
-    padding: 24,
-    display: "flex",
-    flexDirection: "column",
-    gap: 20,
-  },
-};
-
-/* ───── 재사용 컴포넌트 ───── */
+/* ───── 컴포넌트 ───── */
 
 function Chip({ label, active, onClick }) {
   return (
-    <button
-      onClick={onClick}
-      style={{
-        padding: "4px 10px",
-        borderRadius: 999,
-        border: active
-          ? "1px solid var(--accent)"
-          : "1px solid var(--border-light)",
-        background: active ? "var(--accent-bg)" : "transparent",
-        color: active ? "var(--accent-light)" : "var(--text)",
-        fontSize: 12,
-        cursor: "pointer",
-        transition: "all .15s",
-        whiteSpace: "nowrap",
-      }}
-    >
+    <button onClick={onClick} style={{
+      padding: "8px 16px", borderRadius: 20,
+      border: active ? "2px solid var(--accent)" : "1.5px solid var(--border-light)",
+      background: active ? "var(--accent-bg)" : "var(--bg-card)",
+      color: active ? "var(--accent)" : "var(--text)",
+      fontSize: 14, fontWeight: active ? 600 : 400,
+      cursor: "pointer", whiteSpace: "nowrap",
+      boxShadow: active ? "0 2px 8px rgba(249,115,22,.15)" : "0 1px 3px rgba(0,0,0,.04)",
+      transition: "all .15s",
+    }}>
       {label}
     </button>
   );
 }
 
-function Tab({ label, active, onClick }) {
+function Pill({ text, variant = "default" }) {
+  const s = {
+    matched: { background: "var(--green-bg)", color: "var(--green)" },
+    missing: { background: "var(--red-bg)", color: "var(--red)" },
+    default: { background: "var(--bg-input)", color: "var(--text-muted)" },
+  };
   return (
-    <button
-      onClick={onClick}
-      style={{
-        padding: "6px 16px",
-        borderRadius: 6,
-        border: "none",
-        background: active ? "var(--accent)" : "transparent",
-        color: active ? "#fff" : "var(--text-muted)",
-        fontSize: 13,
-        fontWeight: 600,
-        cursor: "pointer",
-      }}
-    >
-      {label}
-    </button>
+    <span style={{ display: "inline-block", padding: "3px 10px", borderRadius: 12, fontSize: 13, ...s[variant] }}>
+      {text}
+    </span>
   );
 }
 
 function MatchBar({ score }) {
   const pct = Math.round(score * 100);
   return (
-    <div
-      style={{
-        height: 4,
-        borderRadius: 2,
-        background: "var(--border)",
-        overflow: "hidden",
-        margin: "8px 0",
-      }}
-    >
-      <div
-        style={{
-          width: `${pct}%`,
-          height: "100%",
-          borderRadius: 2,
-          background:
-            pct >= 80
-              ? "var(--green)"
-              : pct >= 50
-                ? "var(--accent)"
-                : "var(--red)",
-          transition: "width .3s",
-        }}
+    <div style={{ height: 5, borderRadius: 3, background: "var(--bg-input)", overflow: "hidden", margin: "8px 0" }}>
+      <div style={{
+        width: `${pct}%`, height: "100%", borderRadius: 3,
+        background: pct >= 80 ? "var(--green)" : pct >= 50 ? "var(--accent)" : "var(--red)",
+        transition: "width .3s",
+      }} />
+    </div>
+  );
+}
+
+function YoutubeEmbed({ videoId, title }) {
+  if (!videoId) return null;
+  return (
+    <div style={{ position: "relative", paddingBottom: "56.25%", height: 0, borderRadius: 12, overflow: "hidden", background: "#000" }}>
+      <iframe
+        src={`https://www.youtube.com/embed/${videoId}`}
+        title={title}
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        allowFullScreen
+        style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: "none" }}
       />
     </div>
   );
 }
 
-function Pill({ text, variant = "default" }) {
-  const styles = {
-    matched: { background: "var(--green-bg)", color: "var(--green)" },
-    missing: { background: "var(--red-bg)", color: "var(--red)" },
-    default: { background: "var(--bg-input)", color: "var(--text)" },
-  };
+/* ───── 쇼핑 링크 ───── */
+
+const COUPANG_LPTAG = "AF8567820";
+
+function shopUrl(name, shop) {
+  const q = encodeURIComponent(name);
+  if (shop === "naver") return `https://shopping.naver.com/ns/search?query=${q}&searchMethod=direct`;
+  return `https://www.coupang.com/np/search?q=${q}&lptag=${COUPANG_LPTAG}&pageType=SEARCH&pageValue=${q}`;
+}
+
+const CoupangLogo = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+    <rect width="24" height="24" rx="4" fill="#E31837"/>
+    <path d="M6 12a6 6 0 1112 0 6 6 0 01-12 0zm6-3.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7z" fill="#fff"/>
+  </svg>
+);
+const NaverLogo = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+    <rect width="24" height="24" rx="4" fill="#03C75A"/>
+    <path d="M7 7h3.2l3.6 5.2V7H17v10h-3.2L10.2 11.8V17H7V7z" fill="#fff"/>
+  </svg>
+);
+
+function ShoppingLinks({ items }) {
+  const [shop, setShop] = useState("coupang");
   return (
-    <span
-      style={{
-        display: "inline-block",
-        padding: "2px 8px",
-        borderRadius: 999,
-        fontSize: 11,
-        fontFamily: "var(--mono)",
-        ...styles[variant],
-      }}
-    >
-      {text}
-    </span>
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <h4 style={{ fontSize: 14, fontWeight: 600, color: "var(--text-muted)" }}>부족한 재료 구매</h4>
+        <div style={{ display: "flex", gap: 4 }}>
+          {[
+            { key: "coupang", label: "쿠팡", Logo: CoupangLogo },
+            { key: "naver", label: "네이버", Logo: NaverLogo },
+          ].map(({ key, label, Logo }) => (
+            <button key={key} onClick={() => setShop(key)} style={{
+              padding: "4px 12px", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer",
+              border: shop === key ? "1.5px solid var(--accent)" : "1.5px solid var(--border)",
+              background: shop === key ? "var(--accent-bg)" : "transparent",
+              color: shop === key ? "var(--accent)" : "var(--text-muted)",
+              display: "flex", alignItems: "center", gap: 4,
+            }}>
+              <Logo /> {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {items.map((name) => (
+          <a key={name} href={shopUrl(name, shop)} target="_blank" rel="noopener noreferrer"
+            style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px", borderRadius: 10, background: "var(--bg-input)", color: "var(--accent)", fontSize: 14, textDecoration: "none", fontWeight: 500 }}>
+            {shop === "coupang" ? <CoupangLogo /> : <NaverLogo />} {name} 검색
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ───── 선택된 재료 태그 (접기/펼치기) ───── */
+
+function SelectedTags({ selected, toggle, clearAll }) {
+  const [expanded, setExpanded] = useState(false);
+  const items = [...selected];
+
+  return (
+    <div style={{ padding: "8px 20px 10px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+        <span style={{ fontSize: 13, color: "var(--accent)", fontWeight: 700 }}>
+          내 재료 {items.length}개
+        </span>
+        <div style={{ display: "flex", gap: 8 }}>
+          {items.length > 6 && (
+            <button onClick={() => setExpanded((v) => !v)} style={{
+              background: "none", border: "none", color: "var(--text-muted)",
+              fontSize: 12, cursor: "pointer",
+            }}>
+              {expanded ? "접기 ▲" : "펼치기 ▼"}
+            </button>
+          )}
+          <button onClick={clearAll} style={{
+            background: "none", border: "none", color: "var(--text-muted)",
+            fontSize: 12, cursor: "pointer", textDecoration: "underline",
+          }}>
+            모두 해제
+          </button>
+        </div>
+      </div>
+      <div style={{
+        display: "flex", flexWrap: "wrap", gap: 5,
+        maxHeight: expanded ? "none" : 64, overflow: "hidden",
+        position: "relative",
+      }}>
+        {items.map((name) => (
+          <span key={name} onClick={() => toggle(name)} style={{
+            padding: "4px 10px", borderRadius: 14,
+            background: "var(--accent)", color: "#fff",
+            fontSize: 12, cursor: "pointer", fontWeight: 500,
+            display: "inline-flex", alignItems: "center", gap: 3,
+          }}>
+            {name} <span style={{ fontSize: 10, opacity: 0.7 }}>✕</span>
+          </span>
+        ))}
+        {!expanded && items.length > 6 && (
+          <div style={{
+            position: "absolute", bottom: 0, left: 0, right: 0, height: 24,
+            background: "linear-gradient(transparent, var(--bg))",
+          }} />
+        )}
+      </div>
+    </div>
   );
 }
 
 /* ───── 레시피 카드 ───── */
 
-function RecipeCard({ recipe, match, onClick, selected, compareMode, onCompareToggle }) {
+function RecipeCard({ recipe, match, onClick, selected, selectedCount }) {
   const pct = Math.round(match.score * 100);
   const emoji = EMOJI[recipe.category] || EMOJI["기타"];
+  const totalIng = recipe.ingredients?.length || 0;
+  const hasSelection = selectedCount > 0;
 
   return (
-    <div
-      onClick={onClick}
-      style={{
-        background: "var(--bg-card)",
-        border: selected
-          ? "1px solid var(--accent)"
-          : "1px solid var(--border)",
-        borderRadius: 12,
-        padding: 20,
-        cursor: "pointer",
-        transition: "border-color .15s, transform .15s",
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}>
-        <div>
-          <span style={{ fontSize: 28 }}>{emoji}</span>
-          <h3
-            style={{
-              fontFamily: "var(--serif)",
-              fontSize: 17,
-              fontWeight: 700,
-              color: "var(--text-bright)",
-              margin: "6px 0 2px",
-            }}
-          >
+    <div onClick={onClick} style={{
+      background: "var(--bg-card)", border: selected ? "2px solid var(--accent)" : "1.5px solid var(--border)",
+      borderRadius: 14, padding: "14px 16px", cursor: "pointer",
+      boxShadow: selected ? "0 4px 12px rgba(249,115,22,.12)" : "0 1px 4px rgba(0,0,0,.04)",
+      transition: "all .15s",
+    }}>
+      {/* 상단: 이모지 + 제목 + 채널 */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: hasSelection ? 10 : 0 }}>
+        <span style={{ fontSize: 26, flexShrink: 0 }}>{emoji}</span>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text-bright)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {recipe.title}
           </h3>
           <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-            {recipe.channel || recipe.category} · {recipe.time} · {recipe.difficulty}
+            {recipe.channel} · {recipe.difficulty}
           </span>
         </div>
-        <span
-          style={{
-            fontFamily: "var(--mono)",
-            fontSize: 20,
-            fontWeight: 500,
-            color:
-              pct >= 80
-                ? "var(--green)"
-                : pct >= 50
-                  ? "var(--accent)"
-                  : "var(--red)",
-          }}
-        >
-          {pct}%
-        </span>
       </div>
 
-      <MatchBar score={match.score} />
+      {/* 하단: 재료 매칭 정보 (재료 선택 시만) */}
+      {hasSelection && (
+        <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
+          {/* 재료 준비율 */}
+          <div style={{
+            flex: 1, background: "var(--bg-input)", borderRadius: 10, padding: "8px 12px",
+            display: "flex", flexDirection: "column", justifyContent: "center",
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>재료 준비율</span>
+              <span style={{
+                fontFamily: "var(--mono)", fontSize: 16, fontWeight: 700,
+                color: pct >= 80 ? "var(--green)" : pct >= 50 ? "var(--accent)" : "var(--red)",
+              }}>
+                {pct}%
+              </span>
+            </div>
+            <MatchBar score={match.score} />
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+              {match.matched.length}/{totalIng}개 보유
+            </span>
+          </div>
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4 }}>
-        {match.matched.map((n) => (
-          <Pill key={n} text={n} variant="matched" />
-        ))}
-        {match.missing.map((n) => (
-          <Pill key={n} text={n} variant="missing" />
-        ))}
-      </div>
-
-      {compareMode && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onCompareToggle(recipe.id);
-          }}
-          style={{
-            marginTop: 10,
-            padding: "4px 12px",
-            borderRadius: 6,
-            border: selected
-              ? "1px solid var(--accent)"
-              : "1px solid var(--border-light)",
-            background: selected ? "var(--accent-bg)" : "transparent",
-            color: selected ? "var(--accent)" : "var(--text-muted)",
-            fontSize: 12,
-            cursor: "pointer",
-          }}
-        >
-          {selected ? "선택됨 ✓" : "비교 선택"}
-        </button>
-      )}
-
-      {recipe.url && !compareMode && (
-        <a
-          href={recipe.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(e) => e.stopPropagation()}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-            marginTop: 10,
-            padding: "6px 14px",
-            borderRadius: 6,
-            background: "var(--red)",
-            color: "#fff",
-            fontSize: 12,
-            fontWeight: 600,
-            textDecoration: "none",
-          }}
-        >
-          ▶ YouTube에서 보기
-        </a>
+          {/* 내 재료 일치 */}
+          <div style={{
+            width: 80, background: match.matchedCount === selectedCount ? "var(--green-bg)" : "var(--accent-bg)",
+            borderRadius: 10, padding: "8px 10px",
+            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+          }}>
+            <span style={{
+              fontFamily: "var(--mono)", fontSize: 20, fontWeight: 700,
+              color: match.matchedCount === selectedCount ? "var(--green)" : "var(--accent)",
+            }}>
+              {match.matchedCount}/{selectedCount}
+            </span>
+            <span style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>내 재료</span>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -337,187 +270,76 @@ function RecipeCard({ recipe, match, onClick, selected, compareMode, onCompareTo
 
 function DetailPanel({ recipe, match, onClose }) {
   if (!recipe) return null;
-
   const emoji = EMOJI[recipe.category] || EMOJI["기타"];
-  const previewSteps = (recipe.steps || []).slice(0, 2);
+  const ytId = getYoutubeId(recipe);
 
   return (
-    <div style={S.panel}>
-      {/* 닫기 */}
-      <button
-        onClick={onClose}
-        style={{
-          alignSelf: "flex-end",
-          background: "none",
-          border: "none",
-          color: "var(--text-muted)",
-          fontSize: 20,
-          cursor: "pointer",
-        }}
-      >
-        ✕
-      </button>
+    <>
+      <div onClick={onClose} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,.3)", zIndex: 99 }} />
+      <div style={{
+        position: "fixed", top: 0, right: 0, bottom: 0,
+        width: "min(440px, 100vw)", background: "var(--bg)", zIndex: 100,
+        borderLeft: "1px solid var(--border)", overflowY: "auto",
+        padding: "24px 20px", display: "flex", flexDirection: "column", gap: 18,
+      }}>
+        <button onClick={onClose} style={{ alignSelf: "flex-end", background: "none", border: "none", color: "var(--text-muted)", fontSize: 24, cursor: "pointer" }}>
+          ✕
+        </button>
 
-      {/* 헤더 */}
-      <div>
-        <span style={{ fontSize: 40 }}>{emoji}</span>
-        <h2
-          style={{
-            fontFamily: "var(--serif)",
-            fontSize: 22,
-            fontWeight: 700,
-            color: "var(--text-bright)",
-            marginTop: 8,
-          }}
-        >
-          {recipe.title}
-        </h2>
-        <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>
-          {recipe.channel || recipe.category} · {recipe.time} · {recipe.difficulty}
-        </p>
-      </div>
-
-      {/* YouTube CTA */}
-      {recipe.url ? (
-        <a
-          href={recipe.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 8,
-            padding: "12px 0",
-            borderRadius: 8,
-            background: "var(--red)",
-            color: "#fff",
-            fontSize: 15,
-            fontWeight: 700,
-            textDecoration: "none",
-          }}
-        >
-          ▶ YouTube 원본 보기
-        </a>
-      ) : (
-        <div
-          style={{
-            padding: "12px 0",
-            borderRadius: 8,
-            background: "var(--bg-input)",
-            textAlign: "center",
-            color: "var(--text-muted)",
-            fontSize: 13,
-          }}
-        >
-          YouTube URL 없음 — 레시피 추출로 추가해보세요
-        </div>
-      )}
-
-      {/* 재료 */}
-      <div>
-        <h4
-          style={{
-            fontSize: 13,
-            fontWeight: 600,
-            color: "var(--text-muted)",
-            marginBottom: 8,
-          }}
-        >
-          재료 미리보기
-        </h4>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {match.matched.map((n) => (
-            <Pill key={n} text={`✓ ${n}`} variant="matched" />
-          ))}
-          {match.missing.map((n) => (
-            <Pill key={n} text={`✗ ${n}`} variant="missing" />
-          ))}
-        </div>
-      </div>
-
-      {/* 조리 흐름 미리보기 */}
-      <div>
-        <h4
-          style={{
-            fontSize: 13,
-            fontWeight: 600,
-            color: "var(--text-muted)",
-            marginBottom: 8,
-          }}
-        >
-          조리 흐름 미리보기
-        </h4>
-        <ol
-          style={{
-            paddingLeft: 20,
-            display: "flex",
-            flexDirection: "column",
-            gap: 6,
-          }}
-        >
-          {previewSteps.map((step, i) => (
-            <li
-              key={i}
-              style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.5 }}
-            >
-              {step}
-            </li>
-          ))}
-        </ol>
-        {(recipe.steps || []).length > 2 && (
-          <p
-            style={{
-              fontSize: 12,
-              color: "var(--text-muted)",
-              marginTop: 8,
-              fontStyle: "italic",
-            }}
-          >
-            …나머지 {recipe.steps.length - 2}단계는 영상에서 확인하세요
-          </p>
-        )}
-      </div>
-
-      {/* 부족 재료 → 쿠팡 */}
-      {match.missing.length > 0 && (
         <div>
-          <h4
-            style={{
-              fontSize: 13,
-              fontWeight: 600,
-              color: "var(--text-muted)",
-              marginBottom: 8,
-            }}
-          >
-            부족한 재료 구매
-          </h4>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {match.missing.map((name) => (
-              <a
-                key={name}
-                href={`https://www.coupang.com/np/search?q=${encodeURIComponent(name)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: "6px 12px",
-                  borderRadius: 6,
-                  background: "var(--bg-input)",
-                  color: "var(--accent-light)",
-                  fontSize: 12,
-                  textDecoration: "none",
-                }}
-              >
-                🛒 {name} 검색
-              </a>
-            ))}
+          <span style={{ fontSize: 40 }}>{emoji}</span>
+          <h2 style={{ fontSize: 22, fontWeight: 700, color: "var(--text-bright)", marginTop: 8 }}>
+            {recipe.title}
+          </h2>
+          <p style={{ fontSize: 14, color: "var(--text-muted)", marginTop: 4 }}>
+            {recipe.channel} · {recipe.difficulty}
+          </p>
+        </div>
+
+        <YoutubeEmbed videoId={ytId} title={recipe.title} />
+
+        {/* 재료 (분량 포함) */}
+        <div>
+          <h4 style={{ fontSize: 15, fontWeight: 600, color: "var(--text)", marginBottom: 10 }}>재료</h4>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {(recipe.ingredients || []).map((ing, i) => {
+              const name = typeof ing.name === "string" ? ing.name : "";
+              const amount = typeof ing.amount === "string" ? ing.amount : "";
+              if (!name.trim()) return null;
+              const isMatched = match.matched.some((m) => m === name.trim().replace(/\s+/g, "").toLowerCase() || name.toLowerCase().replace(/\s+/g, "").includes(m));
+              return (
+                <div key={i} style={{
+                  display: "flex", justifyContent: "space-between", alignItems: "center",
+                  padding: "6px 12px", borderRadius: 8,
+                  background: isMatched ? "var(--green-bg)" : "var(--red-bg)",
+                }}>
+                  <span style={{ fontSize: 14, color: "var(--text-bright)", fontWeight: 500 }}>
+                    {isMatched ? "✓ " : "✗ "}{name}
+                  </span>
+                  <span style={{ fontSize: 13, color: "var(--text-muted)" }}>{amount}</span>
+                </div>
+              );
+            })}
           </div>
         </div>
-      )}
-    </div>
+
+        {/* 조리 순서 */}
+        {recipe.steps?.length > 0 && (
+          <div>
+            <h4 style={{ fontSize: 15, fontWeight: 600, color: "var(--text)", marginBottom: 10 }}>조리 순서</h4>
+            <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 8, margin: 0 }}>
+              {recipe.steps.map((step, i) => (
+                <li key={i} style={{ fontSize: 14, color: "var(--text)", lineHeight: 1.6 }}>
+                  {typeof step === "string" ? step : ""}
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
+
+        {match.missing.length > 0 && <ShoppingLinks items={match.missing} />}
+      </div>
+    </>
   );
 }
 
@@ -528,144 +350,174 @@ function ComparePanel({ r1, r2, onClose }) {
   const pct = Math.round(sim.jaccard * 100);
 
   return (
-    <div style={S.panel}>
-      <button
-        onClick={onClose}
-        style={{
-          alignSelf: "flex-end",
-          background: "none",
-          border: "none",
-          color: "var(--text-muted)",
-          fontSize: 20,
-          cursor: "pointer",
-        }}
-      >
-        ✕
-      </button>
+    <>
+      <div onClick={onClose} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,.3)", zIndex: 99 }} />
+      <div style={{
+        position: "fixed", top: 0, right: 0, bottom: 0,
+        width: "min(440px, 100vw)", background: "var(--bg)", zIndex: 100,
+        borderLeft: "1px solid var(--border)", overflowY: "auto",
+        padding: "24px 20px", display: "flex", flexDirection: "column", gap: 18,
+      }}>
+        <button onClick={onClose} style={{ alignSelf: "flex-end", background: "none", border: "none", color: "var(--text-muted)", fontSize: 24, cursor: "pointer" }}>
+          ✕
+        </button>
 
-      <h3
-        style={{
-          fontFamily: "var(--serif)",
-          fontSize: 18,
-          color: "var(--text-bright)",
-        }}
-      >
-        레시피 비교
-      </h3>
+        <h3 style={{ fontSize: 20, fontWeight: 700, color: "var(--text-bright)" }}>레시피 비교</h3>
 
-      <div
-        style={{
-          textAlign: "center",
-          padding: 16,
-          background: "var(--bg-input)",
-          borderRadius: 10,
-        }}
-      >
-        <div
-          style={{
-            fontFamily: "var(--mono)",
-            fontSize: 36,
-            fontWeight: 500,
-            color: "var(--accent)",
-          }}
-        >
-          {pct}%
+        <div style={{ textAlign: "center", padding: 20, background: "var(--bg-card)", borderRadius: 14, boxShadow: "0 2px 8px rgba(0,0,0,.04)" }}>
+          <div style={{ fontFamily: "var(--mono)", fontSize: 40, fontWeight: 700, color: "var(--accent)" }}>{pct}%</div>
+          <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>Jaccard 유사도</div>
         </div>
-        <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
-          Jaccard 유사도
+
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 16, fontWeight: 600, color: "var(--text-bright)" }}>
+          <span>{EMOJI[r1.category] || ""} {r1.title}</span>
+          <span style={{ color: "var(--text-muted)" }}>vs</span>
+          <span>{EMOJI[r2.category] || ""} {r2.title}</span>
         </div>
-      </div>
 
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          fontSize: 15,
-          fontWeight: 600,
-          color: "var(--text-bright)",
-        }}
-      >
-        <span>
-          {EMOJI[r1.category] || ""} {r1.title}
-        </span>
-        <span>vs</span>
-        <span>
-          {EMOJI[r2.category] || ""} {r2.title}
-        </span>
-      </div>
-
-      {sim.shared.length > 0 && (
-        <div>
-          <h4 style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 6 }}>
-            공통 재료 ({sim.shared.length})
-          </h4>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-            {sim.shared.map((n) => (
-              <Pill key={n} text={n} variant="matched" />
-            ))}
+        {sim.shared.length > 0 && (
+          <div>
+            <h4 style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 8 }}>공통 재료 ({sim.shared.length})</h4>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+              {sim.shared.map((n) => <Pill key={n} text={n} variant="matched" />)}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      <div style={{ display: "flex", gap: 16 }}>
-        <div style={{ flex: 1 }}>
-          <h4 style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 6 }}>
-            {r1.title}만
-          </h4>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-            {sim.onlyIn1.map((n) => (
-              <Pill key={n} text={n} />
-            ))}
+        <div style={{ display: "flex", gap: 16 }}>
+          <div style={{ flex: 1 }}>
+            <h4 style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 8 }}>{r1.title}만</h4>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+              {sim.onlyIn1.map((n) => <Pill key={n} text={n} />)}
+            </div>
           </div>
-        </div>
-        <div style={{ flex: 1 }}>
-          <h4 style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 6 }}>
-            {r2.title}만
-          </h4>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-            {sim.onlyIn2.map((n) => (
-              <Pill key={n} text={n} />
-            ))}
+          <div style={{ flex: 1 }}>
+            <h4 style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 8 }}>{r2.title}만</h4>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+              {sim.onlyIn2.map((n) => <Pill key={n} text={n} />)}
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
+}
+
+/* ───── 저장 키 ───── */
+
+const MY_INGREDIENTS_KEY = "whattocook_my_ingredients";
+function loadMyIngredients() {
+  try { return new Set(JSON.parse(localStorage.getItem(MY_INGREDIENTS_KEY)) || []); }
+  catch { return new Set(); }
+}
+function saveMyIngredients(set) {
+  localStorage.setItem(MY_INGREDIENTS_KEY, JSON.stringify([...set]));
 }
 
 /* ───── 메인 페이지 ───── */
 
 export default function ServicePage() {
-  const [recipes] = useState(loadRecipes);
-  const [selected, setSelected] = useState(new Set());
+  const [recipes, setRecipes] = useState([]);
+  const [selected, setSelected] = useState(loadMyIngredients);
   const [search, setSearch] = useState("");
-  const [tab, setTab] = useState("match"); // "match" | "compare"
+  const [view, setView] = useState("ingredients"); // "ingredients" | "recipes" | "compare"
   const [detailId, setDetailId] = useState(null);
   const [compareIds, setCompareIds] = useState([]);
 
-  /* 전체 재료 / 카테고리 */
-  const allIngredients = useMemo(() => getAllIngredients(recipes), [recipes]);
-  const allCategories = useMemo(() => getAllCategories(recipes), [recipes]);
+  const [synonyms, setSynonyms] = useState({});
+  const [ingredientCategoryMap, setIngredientCategoryMap] = useState({});
 
-  /* 재료를 카테고리별로 그룹 — 여기선 간이로 레시피 카테고리 기반 그룹핑 */
-  const ingredientsByCategory = useMemo(() => {
-    const map = {};
+  useEffect(() => {
+    fetchRecipes().then(setRecipes).catch(console.error);
+    fetchSynonyms().then(setSynonyms).catch(console.error);
+  }, []);
+
+  useEffect(() => { saveMyIngredients(selected); }, [selected]);
+
+  const normalizeName = useCallback((name) => {
+    if (typeof name !== "string") return "";
+    const t = name.trim();
+    if (synonyms[t]) return synonyms[t];
+    const ns = t.replace(/\s+/g, "");
+    if (synonyms[ns]) return synonyms[ns];
+    return t;
+  }, [synonyms]);
+  const normalizeKey = useCallback((name) => normalizeName(name).replace(/\s+/g, "").toLowerCase(), [normalizeName]);
+
+  const { uniqueNames, nameToDisplay } = useMemo(() => {
+    const displayMap = {};
     for (const r of recipes) {
-      const cat = r.category || "기타";
       for (const ing of r.ingredients || []) {
-        const name = ing.name.trim();
-        if (!map[cat]) map[cat] = new Set();
-        map[cat].add(name);
+        const name = (typeof ing.name === "string" ? ing.name : "").trim();
+        if (!name) continue;
+        const key = normalizeKey(name);
+        if (!displayMap[key] || name.length > displayMap[key].length) displayMap[key] = name;
       }
     }
-    const result = {};
-    for (const cat of Object.keys(map).sort()) {
-      result[cat] = [...map[cat]].sort();
-    }
-    return result;
+    return { uniqueNames: Object.values(displayMap), nameToDisplay: displayMap };
+  }, [recipes, normalizeKey]);
+
+  const [classifyLoading, setClassifyLoading] = useState(false);
+
+  useEffect(() => {
+    setClassifyLoading(true);
+    fetchCachedCategories()
+      .then(setIngredientCategoryMap)
+      .catch(console.error)
+      .finally(() => setClassifyLoading(false));
   }, [recipes]);
 
-  /* 검색 필터 */
+  const EMOJI_MAP = { "육류": "🥩", "해산물": "🐟", "채소": "🥬", "양념/소스": "🧂", "곡물/면/두부": "🍚", "유제품/계란": "🥚", "액체/육수": "💧", "과일": "🍎", "견과류": "🥜", "가공식품": "🏭", "기타": "📦" };
+  const CAT_ORDER = ["육류", "해산물", "채소", "과일", "견과류", "양념/소스", "곡물/면/두부", "유제품/계란", "액체/육수", "가공식품", "기타"];
+
+  // 재료별 등장 빈도 계산
+  const ingredientFrequency = useMemo(() => {
+    const freq = {};
+    for (const r of recipes) {
+      for (const ing of r.ingredients || []) {
+        const key = normalizeKey(ing.name);
+        freq[key] = (freq[key] || 0) + 1;
+      }
+    }
+    return freq;
+  }, [recipes, normalizeKey]);
+
+  const isClassified = Object.keys(ingredientCategoryMap).length > 0;
+
+  const ingredientsByCategory = useMemo(() => {
+    if (classifyLoading || (!isClassified && recipes.length > 0)) return {};
+
+    const map = {};
+    const seen = new Set();
+    for (const r of recipes) {
+      for (const ing of r.ingredients || []) {
+        const name = (typeof ing.name === "string" ? ing.name : "").trim();
+        if (!name) continue;
+        const key = normalizeKey(name);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const displayName = nameToDisplay[key] || name;
+        const rawCat = ingredientCategoryMap[name] || ingredientCategoryMap[displayName] || "기타";
+        const cat = `${EMOJI_MAP[rawCat] || "📦"} ${rawCat}`;
+        if (!map[cat]) map[cat] = [];
+        map[cat].push(displayName);
+      }
+    }
+    // 빈도순 정렬
+    const result = {};
+    for (const rawCat of CAT_ORDER) {
+      const cat = `${EMOJI_MAP[rawCat] || "📦"} ${rawCat}`;
+      if (map[cat]?.length) {
+        result[cat] = map[cat].sort((a, b) => {
+          const fa = ingredientFrequency[normalizeKey(a)] || 0;
+          const fb = ingredientFrequency[normalizeKey(b)] || 0;
+          return fb - fa;
+        });
+      }
+    }
+    return result;
+  }, [recipes, ingredientCategoryMap, nameToDisplay, normalizeKey, classifyLoading, ingredientFrequency]);
+
   const filteredIngredients = useMemo(() => {
     if (!search.trim()) return ingredientsByCategory;
     const q = search.trim().toLowerCase();
@@ -677,19 +529,27 @@ export default function ServicePage() {
     return result;
   }, [ingredientsByCategory, search]);
 
-  /* 정규화된 selected set */
   const selectedNorm = useMemo(() => {
-    return new Set([...selected].map((s) => s.trim().replace(/\s+/g, "").toLowerCase()));
-  }, [selected]);
+    return new Set([...selected].map((s) => normalizeKey(s)));
+  }, [selected, normalizeKey]);
 
-  /* 매칭 계산 & 정렬 */
   const matched = useMemo(() => {
-    return recipes
-      .map((r) => ({ recipe: r, match: computeMatch(r, selectedNorm) }))
-      .sort((a, b) => b.match.score - a.match.score);
+    const list = recipes
+      .map((r) => ({ recipe: r, match: computeMatch(r, selectedNorm) }));
+
+    if (selectedNorm.size === 0) {
+      // 재료 선택 없으면 랜덤 셔플
+      for (let i = list.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [list[i], list[j]] = [list[j], list[i]];
+      }
+      return list;
+    }
+    return list.sort((a, b) => b.match.rankScore - a.match.rankScore);
   }, [recipes, selectedNorm]);
 
-  /* 재료 토글 */
+  const matchCount = useMemo(() => matched.filter((m) => m.match.score > 0).length, [matched]);
+
   const toggle = useCallback((name) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -699,7 +559,6 @@ export default function ServicePage() {
     });
   }, []);
 
-  /* 비교 토글 */
   const toggleCompare = useCallback((id) => {
     setCompareIds((prev) => {
       if (prev.includes(id)) return prev.filter((x) => x !== id);
@@ -708,151 +567,343 @@ export default function ServicePage() {
     });
   }, []);
 
-  /* 상세 대상 */
-  const detailEntry = detailId
-    ? matched.find((m) => m.recipe.id === detailId)
+  const detailEntry = detailId ? matched.find((m) => m.recipe.id === detailId) : null;
+  const compareRecipes = compareIds.length === 2
+    ? [recipes.find((r) => r.id === compareIds[0]), recipes.find((r) => r.id === compareIds[1])]
     : null;
 
-  /* 비교 대상 */
-  const compareRecipes =
-    compareIds.length === 2
-      ? [
-          recipes.find((r) => r.id === compareIds[0]),
-          recipes.find((r) => r.id === compareIds[1]),
-        ]
-      : null;
+  const [openCats, setOpenCats] = useState(new Set());
+  const toggleCat = (cat) => setOpenCats((prev) => {
+    const next = new Set(prev);
+    if (next.has(cat)) next.delete(cat); else next.add(cat);
+    return next;
+  });
 
-  return (
-    <div style={S.layout}>
-      {/* ── 사이드바 ── */}
-      <aside style={S.sidebar}>
-        <div style={S.sidebarHeader}>🍳 What To Cook</div>
+  // 카테고리별 선택된 재료 수
+  const selectedCountByCat = useMemo(() => {
+    const counts = {};
+    for (const [cat, list] of Object.entries(ingredientsByCategory)) {
+      counts[cat] = list.filter((n) => selected.has(n)).length;
+    }
+    return counts;
+  }, [ingredientsByCategory, selected]);
+
+  /* ───── 재료 선택 뷰 ───── */
+  const ingredientsView = (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" }}>
+      {/* 검색 */}
+      <div style={{ padding: "16px 20px 12px" }}>
         <input
-          type="text"
-          placeholder="재료 검색…"
-          value={search}
+          type="text" placeholder="🔍 재료 검색..." value={search}
           onChange={(e) => setSearch(e.target.value)}
-          style={S.searchBox}
+          style={{
+            width: "100%", padding: "12px 16px", background: "var(--bg-card)",
+            border: "1.5px solid var(--border)", borderRadius: 12, fontSize: 15,
+            color: "var(--text-bright)", outline: "none",
+            boxShadow: "0 1px 4px rgba(0,0,0,.04)",
+          }}
         />
-        <div style={S.sidebarScroll}>
-          {Object.entries(filteredIngredients).map(([cat, list]) => (
-            <div key={cat}>
-              <div style={S.catLabel}>
-                {EMOJI[cat] || ""} {cat}
-              </div>
-              <div style={S.chipWrap}>
-                {list.map((name) => (
-                  <Chip
-                    key={name}
-                    label={name}
-                    active={selected.has(name)}
-                    onClick={() => toggle(name)}
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
+      </div>
 
-          {Object.keys(filteredIngredients).length === 0 && (
-            <p style={{ color: "var(--text-muted)", fontSize: 13, marginTop: 20 }}>
-              검색 결과가 없습니다
-            </p>
-          )}
-        </div>
-
-        {selected.size > 0 && (
-          <div
-            style={{
-              padding: "12px 16px",
-              borderTop: "1px solid var(--border)",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-            }}
-          >
-            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-              {selected.size}개 선택
-            </span>
-            <button
-              onClick={() => setSelected(new Set())}
-              style={{
-                background: "none",
-                border: "none",
-                color: "var(--accent)",
-                fontSize: 12,
-                cursor: "pointer",
-              }}
-            >
-              초기화
-            </button>
-          </div>
-        )}
-      </aside>
-
-      {/* ── 메인 ── */}
-      <main style={S.main}>
-        <div style={S.topBar}>
-          <div style={S.tabs}>
-            <Tab
-              label="재료로 찾기"
-              active={tab === "match"}
-              onClick={() => {
-                setTab("match");
-                setCompareIds([]);
-              }}
-            />
-            <Tab
-              label="레시피 비교"
-              active={tab === "compare"}
-              onClick={() => {
-                setTab("compare");
-                setDetailId(null);
-              }}
-            />
-          </div>
-          <span style={S.badge}>
-            {selected.size > 0
-              ? `${matched.filter((m) => m.match.score > 0).length} / ${recipes.length} recipes`
-              : `${recipes.length} recipes`}
-          </span>
-        </div>
-
-        <div style={S.grid}>
-          {matched.map(({ recipe, match }) => (
-            <RecipeCard
-              key={recipe.id}
-              recipe={recipe}
-              match={match}
-              selected={
-                tab === "compare"
-                  ? compareIds.includes(recipe.id)
-                  : detailId === recipe.id
-              }
-              onClick={() => {
-                if (tab === "match") setDetailId(recipe.id);
-              }}
-              compareMode={tab === "compare"}
-              onCompareToggle={toggleCompare}
-            />
-          ))}
-        </div>
-      </main>
-
-      {/* ── 우측 패널 ── */}
-      {tab === "match" && detailEntry && (
-        <DetailPanel
-          recipe={detailEntry.recipe}
-          match={detailEntry.match}
-          onClose={() => setDetailId(null)}
-        />
+      {/* 선택된 재료 요약 */}
+      {selected.size > 0 && (
+        <SelectedTags selected={selected} toggle={toggle} clearAll={() => setSelected(new Set())} />
       )}
 
-      {tab === "compare" && compareRecipes && (
-        <ComparePanel
-          r1={compareRecipes[0]}
-          r2={compareRecipes[1]}
-          onClose={() => setCompareIds([])}
-        />
+      {/* 카테고리 아코디언 */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "0 20px 100px" }}>
+        {(classifyLoading || (!isClassified && recipes.length > 0)) ? (
+          <p style={{ color: "var(--text-muted)", fontSize: 15, marginTop: 40, textAlign: "center" }}>
+            재료 분류 중... 🍳
+          </p>
+        ) : (
+          <>
+            {Object.entries(filteredIngredients).map(([cat, list]) => {
+              const isOpen = openCats.has(cat) || search.trim();
+              const selCount = selectedCountByCat[cat] || 0;
+              return (
+                <div key={cat} style={{
+                  marginBottom: 8, background: "var(--bg-card)", borderRadius: 12,
+                  border: selCount > 0 ? "1.5px solid var(--accent-border)" : "1.5px solid var(--border)",
+                  overflow: "hidden",
+                  boxShadow: "0 1px 3px rgba(0,0,0,.03)",
+                }}>
+                  {/* 카테고리 헤더 */}
+                  <button onClick={() => toggleCat(cat)} style={{
+                    width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center",
+                    padding: "12px 16px", background: "none", border: "none", cursor: "pointer",
+                  }}>
+                    <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text-bright)" }}>
+                      {cat}
+                    </span>
+                    <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {selCount > 0 && (
+                        <span style={{
+                          padding: "2px 8px", borderRadius: 10,
+                          background: "var(--accent)", color: "#fff",
+                          fontSize: 11, fontWeight: 700,
+                        }}>
+                          {selCount}
+                        </span>
+                      )}
+                      <span style={{
+                        padding: "2px 8px", borderRadius: 10,
+                        background: "var(--bg-input)", color: "var(--text-muted)",
+                        fontSize: 11,
+                      }}>
+                        {list.length}
+                      </span>
+                      <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
+                        {isOpen ? "▲" : "▼"}
+                      </span>
+                    </span>
+                  </button>
+
+                  {/* 재료 칩 */}
+                  {isOpen && (
+                    <div style={{ padding: "0 16px 14px", display: "flex", flexWrap: "wrap", gap: 7 }}>
+                      {list.map((name) => (
+                        <Chip key={name} label={name} active={selected.has(name)} onClick={() => toggle(name)} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {Object.keys(filteredIngredients).length === 0 && (
+              <p style={{ color: "var(--text-muted)", fontSize: 15, marginTop: 24, textAlign: "center" }}>
+                검색 결과가 없어요 😅
+              </p>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* 하단 플로팅 CTA */}
+      <div style={{
+        position: "fixed", bottom: 20, left: 20, right: 20,
+        zIndex: 50,
+        transition: "transform .3s, opacity .3s",
+        transform: selected.size > 0 ? "translateY(0)" : "translateY(80px)",
+        opacity: selected.size > 0 ? 1 : 0,
+        pointerEvents: selected.size > 0 ? "auto" : "none",
+      }}>
+        <button
+          onClick={() => setView("recipes")}
+          style={{
+            width: "100%", padding: "16px", borderRadius: 16, border: "none",
+            background: matchCount > 0 ? "var(--accent)" : "var(--border)",
+            color: matchCount > 0 ? "#fff" : "var(--text-muted)",
+            fontSize: 16, fontWeight: 700, cursor: "pointer",
+            boxShadow: matchCount > 0 ? "0 6px 20px rgba(249,115,22,.35)" : "0 2px 10px rgba(0,0,0,.1)",
+          }}
+        >
+          {matchCount > 0
+            ? `만들 수 있는 레시피 보기 (${matchCount}개 매칭)`
+            : "매칭되는 레시피가 없어요"}
+        </button>
+      </div>
+    </div>
+  );
+
+  /* ───── 레시피 리스트 뷰 ───── */
+  const recipesView = (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      {/* 헤더 */}
+      <div style={{ padding: "14px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid var(--border)" }}>
+        <button onClick={() => setView("ingredients")} style={{
+          background: "none", border: "none", color: "var(--accent)", fontSize: 15, fontWeight: 600, cursor: "pointer",
+        }}>
+          ← 재료 수정
+        </button>
+        <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
+          {selected.size > 0 ? `${matchCount}/${recipes.length} 매칭` : `${recipes.length}개 레시피`}
+        </span>
+      </div>
+
+      {/* 선택된 재료 요약 */}
+      {selected.size > 0 && (
+        <div style={{ borderBottom: "1px solid var(--border)" }}>
+          <SelectedTags selected={selected} toggle={toggle} clearAll={() => setSelected(new Set())} />
+        </div>
+      )}
+
+      {/* 리스트 */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "12px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
+        {matched.map(({ recipe, match }) => (
+          <RecipeCard
+            key={recipe.id} recipe={recipe} match={match}
+            selected={detailId === recipe.id}
+            selectedCount={selected.size}
+            onClick={() => setDetailId(recipe.id)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+
+  /* ───── 비교 뷰 ───── */
+  const compareView = (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <div style={{ padding: "14px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid var(--border)" }}>
+        <button onClick={() => setView("recipes")} style={{
+          background: "none", border: "none", color: "var(--accent)", fontSize: 15, fontWeight: 600, cursor: "pointer",
+        }}>
+          ← 뒤로
+        </button>
+        <span style={{ fontSize: 14, color: "var(--text-muted)" }}>
+          {compareIds.length}/2 선택됨
+        </span>
+      </div>
+
+      <div style={{ flex: 1, overflowY: "auto", padding: "12px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
+        {matched.map(({ recipe, match }) => (
+          <div key={recipe.id} onClick={() => toggleCompare(recipe.id)} style={{
+            background: "var(--bg-card)",
+            border: compareIds.includes(recipe.id) ? "2px solid var(--accent)" : "1.5px solid var(--border)",
+            borderRadius: 14, padding: "14px 18px", cursor: "pointer",
+            display: "flex", alignItems: "center", gap: 12,
+          }}>
+            <span style={{ fontSize: 28 }}>{EMOJI[recipe.category] || "🍽️"}</span>
+            <div style={{ flex: 1 }}>
+              <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text-bright)", margin: 0 }}>{recipe.title}</h3>
+              <span style={{ fontSize: 13, color: "var(--text-muted)" }}>{recipe.channel}</span>
+            </div>
+            <span style={{
+              padding: "4px 10px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+              background: compareIds.includes(recipe.id) ? "var(--accent)" : "var(--bg-input)",
+              color: compareIds.includes(recipe.id) ? "#fff" : "var(--text-muted)",
+            }}>
+              {compareIds.includes(recipe.id) ? "✓" : "선택"}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  const [showOnboarding, setShowOnboarding] = useState(() => {
+    return !localStorage.getItem("whattocook_onboarding_done");
+  });
+
+  const dismissOnboarding = (forever) => {
+    if (forever) localStorage.setItem("whattocook_onboarding_done", "1");
+    setShowOnboarding(false);
+  };
+
+  return (
+    <div style={{ height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" }}>
+
+      {/* 온보딩 팝업 */}
+      {showOnboarding && (
+        <>
+          <div onClick={() => dismissOnboarding(false)} style={{
+            position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+            background: "rgba(0,0,0,.4)", zIndex: 200,
+          }} />
+          <div style={{
+            position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
+            width: "min(380px, 90vw)", background: "var(--bg-card)", borderRadius: 20,
+            padding: "32px 24px 24px", zIndex: 201,
+            boxShadow: "0 20px 60px rgba(0,0,0,.15)",
+            textAlign: "center",
+          }}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>🍳</div>
+            <h2 style={{ fontSize: 22, fontWeight: 800, color: "var(--accent)", marginBottom: 6 }}>
+              뭐해먹지?
+            </h2>
+            <p style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 24, lineHeight: 1.5 }}>
+              냉장고 속 재료로 만들 수 있는 레시피를 찾아보세요
+            </p>
+
+            <div style={{ textAlign: "left", display: "flex", flexDirection: "column", gap: 14, marginBottom: 28 }}>
+              <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                <span style={{ fontSize: 24, flexShrink: 0 }}>1️⃣</span>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text-bright)" }}>재료 고르기</div>
+                  <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 2 }}>집에 있는 재료를 탭해서 선택하세요</div>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                <span style={{ fontSize: 24, flexShrink: 0 }}>2️⃣</span>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text-bright)" }}>레시피 확인</div>
+                  <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 2 }}>매칭률 높은 순으로 레시피를 추천해드려요</div>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                <span style={{ fontSize: 24, flexShrink: 0 }}>3️⃣</span>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text-bright)" }}>영상 보며 요리</div>
+                  <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 2 }}>유튜브 영상과 재료/분량을 바로 확인하세요</div>
+                </div>
+              </div>
+            </div>
+
+            <button onClick={() => dismissOnboarding(false)} style={{
+              width: "100%", padding: "14px", borderRadius: 14, border: "none",
+              background: "var(--accent)", color: "#fff", fontSize: 16, fontWeight: 700,
+              cursor: "pointer", boxShadow: "0 4px 14px rgba(249,115,22,.3)",
+              marginBottom: 10,
+            }}>
+              시작하기
+            </button>
+            <button onClick={() => dismissOnboarding(true)} style={{
+              background: "none", border: "none", color: "var(--text-muted)",
+              fontSize: 13, cursor: "pointer",
+            }}>
+              다시 보지 않기
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* 헤더 */}
+      <div style={{
+        padding: "10px 16px 0", borderBottom: "1px solid var(--border)", background: "var(--bg-card)",
+      }}>
+        <h1 style={{ fontSize: 18, fontWeight: 800, color: "var(--accent)", margin: "0 0 8px", cursor: "pointer" }}
+          onClick={() => setView("ingredients")}>
+          🍳 뭐해먹지?
+        </h1>
+        <div style={{ display: "flex", gap: 4, paddingBottom: 10 }}>
+          {[
+            { key: "ingredients", label: "재료" },
+            { key: "recipes", label: "레시피" },
+            { key: "compare", label: "비교" },
+          ].map(({ key, label }) => (
+            <button key={key} onClick={() => setView(key)} style={{
+              padding: "6px 12px", borderRadius: 8, border: "none", fontSize: 13, fontWeight: 600, cursor: "pointer",
+              background: view === key ? "var(--accent)" : "transparent",
+              color: view === key ? "#fff" : "var(--text-muted)",
+              whiteSpace: "nowrap",
+            }}>
+              {label}
+              {key === "recipes" && matchCount > 0 && view !== "recipes" && (
+                <span style={{
+                  marginLeft: 3, padding: "1px 5px", borderRadius: 8, fontSize: 10,
+                  background: view === key ? "rgba(255,255,255,.3)" : "var(--accent)",
+                  color: "#fff",
+                }}>
+                  {matchCount}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* 뷰 전환 */}
+      {view === "ingredients" && ingredientsView}
+      {view === "recipes" && recipesView}
+      {view === "compare" && compareView}
+
+      {/* 상세 패널 */}
+      {detailEntry && (
+        <DetailPanel recipe={detailEntry.recipe} match={detailEntry.match} onClose={() => setDetailId(null)} />
+      )}
+      {compareRecipes && (
+        <ComparePanel r1={compareRecipes[0]} r2={compareRecipes[1]} onClose={() => setCompareIds([])} />
       )}
     </div>
   );
