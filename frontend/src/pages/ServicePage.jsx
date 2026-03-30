@@ -703,39 +703,50 @@ export default function ServicePage() {
 
                     return (
                       <div key={subKey} style={{ borderTop: "1px solid var(--border)" }}>
-                        {/* 서브카테고리 헤더 — 클릭으로 전체 선택/해제 */}
-                        <div style={{ display: "flex", alignItems: "center", padding: "8px 16px", gap: 8 }}>
-                          <button onClick={() => toggleSubcategory(items)} style={{
-                            padding: "5px 14px", borderRadius: 20, border: "none", cursor: "pointer",
-                            background: allSubSelected ? "var(--accent)" : subSelCount > 0 ? "var(--accent-bg)" : "var(--bg-input)",
-                            color: allSubSelected ? "#fff" : subSelCount > 0 ? "var(--accent)" : "var(--text)",
-                            fontSize: 15, fontWeight: 600, flex: 1, textAlign: "left",
+                        {/* 서브카테고리 헤더 — 클릭으로 아코디언 열기 */}
+                        <button onClick={() => setOpenSubs((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(subKey)) next.delete(subKey); else next.add(subKey);
+                          return next;
+                        })} style={{
+                          width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center",
+                          padding: "10px 16px", background: "none", border: "none", cursor: "pointer",
+                        }}>
+                          <span style={{
+                            fontSize: 15, fontWeight: 600,
+                            color: subSelCount > 0 ? "var(--accent)" : "var(--text)",
                           }}>
                             {sub}
-                            {subSelCount > 0 && !allSubSelected && (
-                              <span style={{ marginLeft: 6, fontSize: 11, opacity: 0.7 }}>{subSelCount}/{items.length}</span>
+                          </span>
+                          <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            {subSelCount > 0 && (
+                              <span style={{ padding: "2px 7px", borderRadius: 8, background: "var(--accent)", color: "#fff", fontSize: 11, fontWeight: 700 }}>
+                                {subSelCount}/{items.length}
+                              </span>
                             )}
-                          </button>
-                          {(
-                            <button onClick={() => setOpenSubs((prev) => {
-                              const next = new Set(prev);
-                              if (next.has(subKey)) next.delete(subKey); else next.add(subKey);
-                              return next;
-                            })} style={{
-                              background: "none", border: "none", color: "var(--text-muted)",
-                              fontSize: 11, cursor: "pointer", padding: "4px 8px",
-                            }}>
+                            <span style={{ color: "var(--text-muted)", fontSize: 13 }}>
                               {items.length}개 {isSubOpen ? "▲" : "▼"}
-                            </button>
-                          )}
-                        </div>
+                            </span>
+                          </span>
+                        </button>
 
-                        {/* 개별 재료 칩 (펼친 경우) */}
+                        {/* 펼침: 전체 선택 + 개별 재료 칩 */}
                         {isSubOpen && (
-                          <div style={{ padding: "0 16px 10px 32px", display: "flex", flexWrap: "wrap", gap: 6 }}>
-                            {items.map((name) => (
-                              <Chip key={name} label={name} active={selected.has(name)} onClick={() => toggle(name)} />
-                            ))}
+                          <div style={{ padding: "0 16px 12px" }}>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 7, alignItems: "center" }}>
+                              <button onClick={() => toggleSubcategory(items)} style={{
+                                padding: "7px 14px", borderRadius: 20, cursor: "pointer",
+                                border: allSubSelected ? "2px solid var(--accent)" : "1.5px dashed var(--border-light)",
+                                background: allSubSelected ? "var(--accent)" : "transparent",
+                                color: allSubSelected ? "#fff" : "var(--text-muted)",
+                                fontSize: 14, fontWeight: 600,
+                              }}>
+                                {allSubSelected ? "✓ 전체 해제" : "전체 선택"}
+                              </button>
+                              {items.map((name) => (
+                                <Chip key={name} label={name} active={selected.has(name)} onClick={() => toggle(name)} />
+                              ))}
+                            </div>
                           </div>
                         )}
                       </div>
