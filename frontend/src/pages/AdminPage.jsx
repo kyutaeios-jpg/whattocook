@@ -1053,8 +1053,9 @@ function IngredientManager() {
       const mappings = {};
       for (const r of synList) { if (r.alias.trim() && r.canonical.trim()) mappings[r.alias.trim()] = r.canonical.trim(); }
       if (Object.keys(mappings).length) await saveSynonyms(mappings);
-      const result = await cleanupIngredients();
-      alert(`${Object.keys(mappings).length}개 동의어 저장, ${result.fixed}개 레시피 소급 적용`);
+      alert(`${Object.keys(mappings).length}개 동의어 저장 완료. 소급 적용은 백그라운드에서 진행됩니다.`);
+      // 소급 적용은 비동기 — 응답 기다리지 않음
+      cleanupIngredients().then((r) => console.log("소급 적용:", r.fixed, "개")).catch(console.error);
     } catch (err) { alert("에러: " + err.message); }
     finally { setSynSaving(false); }
   };
