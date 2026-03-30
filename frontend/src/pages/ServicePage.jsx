@@ -27,11 +27,11 @@ function getYoutubeId(recipe) {
 function Chip({ label, active, onClick }) {
   return (
     <button onClick={onClick} style={{
-      padding: "8px 16px", borderRadius: 20,
+      padding: "10px 18px", borderRadius: 22,
       border: active ? "2px solid var(--accent)" : "1.5px solid var(--border-light)",
       background: active ? "var(--accent-bg)" : "var(--bg-card)",
       color: active ? "var(--accent)" : "var(--text)",
-      fontSize: 14, fontWeight: active ? 600 : 400,
+      fontSize: 15, fontWeight: active ? 600 : 400,
       cursor: "pointer", whiteSpace: "nowrap",
       boxShadow: active ? "0 2px 8px rgba(249,115,22,.15)" : "0 1px 3px rgba(0,0,0,.04)",
       transition: "all .15s",
@@ -149,7 +149,7 @@ function SelectedTags({ selected, toggle, clearAll }) {
   return (
     <div style={{ padding: "8px 20px 10px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-        <span style={{ fontSize: 13, color: "var(--accent)", fontWeight: 700 }}>
+        <span style={{ fontSize: 15, color: "var(--accent)", fontWeight: 700 }}>
           내 재료 {items.length}개
         </span>
         <div style={{ display: "flex", gap: 8 }}>
@@ -214,10 +214,10 @@ function RecipeCard({ recipe, match, onClick, selected, selectedCount }) {
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: hasSelection ? 10 : 0 }}>
         <span style={{ fontSize: 26, flexShrink: 0 }}>{emoji}</span>
         <div style={{ minWidth: 0, flex: 1 }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text-bright)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <h3 style={{ fontSize: 18, fontWeight: 700, color: "var(--text-bright)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {recipe.title}
           </h3>
-          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+          <span style={{ fontSize: 14, color: "var(--text-muted)" }}>
             {recipe.channel} · {recipe.difficulty}
           </span>
         </div>
@@ -232,9 +232,9 @@ function RecipeCard({ recipe, match, onClick, selected, selectedCount }) {
             display: "flex", flexDirection: "column", justifyContent: "center",
           }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
-              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>재료 준비율</span>
+              <span style={{ fontSize: 13, color: "var(--text-muted)" }}>재료 준비율</span>
               <span style={{
-                fontFamily: "var(--mono)", fontSize: 16, fontWeight: 700,
+                fontFamily: "var(--mono)", fontSize: 18, fontWeight: 700,
                 color: pct >= 80 ? "var(--green)" : pct >= 50 ? "var(--accent)" : "var(--red)",
               }}>
                 {pct}%
@@ -253,12 +253,12 @@ function RecipeCard({ recipe, match, onClick, selected, selectedCount }) {
             display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
           }}>
             <span style={{
-              fontFamily: "var(--mono)", fontSize: 20, fontWeight: 700,
+              fontFamily: "var(--mono)", fontSize: 22, fontWeight: 700,
               color: match.matchedCount === selectedCount ? "var(--green)" : "var(--accent)",
             }}>
               {match.matchedCount}/{selectedCount}
             </span>
-            <span style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>내 재료</span>
+            <span style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>내 재료</span>
           </div>
         </div>
       )}
@@ -300,7 +300,7 @@ function DetailPanel({ recipe, match, onClose }) {
 
         {/* 재료 (분량 포함) */}
         <div>
-          <h4 style={{ fontSize: 15, fontWeight: 600, color: "var(--text)", marginBottom: 10 }}>재료</h4>
+          <h4 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 10 }}>재료</h4>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {(recipe.ingredients || []).map((ing, i) => {
               const name = typeof ing.name === "string" ? ing.name : "";
@@ -646,7 +646,7 @@ export default function ServicePage() {
           type="text" placeholder="🔍 재료 검색..." value={search}
           onChange={(e) => setSearch(e.target.value)}
           style={{
-            width: "100%", padding: "12px 16px", background: "var(--bg-card)",
+            width: "100%", padding: "14px 18px", background: "var(--bg-card)",
             border: "1.5px solid var(--border)", borderRadius: 12, fontSize: 15,
             color: "var(--text-bright)", outline: "none",
             boxShadow: "0 1px 4px rgba(0,0,0,.04)",
@@ -683,7 +683,7 @@ export default function ServicePage() {
                     width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center",
                     padding: "12px 16px", background: "none", border: "none", cursor: "pointer",
                   }}>
-                    <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text-bright)" }}>{cat}</span>
+                    <span style={{ fontSize: 17, fontWeight: 700, color: "var(--text-bright)" }}>{cat}</span>
                     <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       {catSelCount > 0 && (
                         <span style={{ padding: "2px 8px", borderRadius: 10, background: "var(--accent)", color: "#fff", fontSize: 11, fontWeight: 700 }}>
@@ -709,7 +709,7 @@ export default function ServicePage() {
                             padding: "5px 14px", borderRadius: 20, border: "none", cursor: "pointer",
                             background: allSubSelected ? "var(--accent)" : subSelCount > 0 ? "var(--accent-bg)" : "var(--bg-input)",
                             color: allSubSelected ? "#fff" : subSelCount > 0 ? "var(--accent)" : "var(--text)",
-                            fontSize: 14, fontWeight: 600, flex: 1, textAlign: "left",
+                            fontSize: 15, fontWeight: 600, flex: 1, textAlign: "left",
                           }}>
                             {sub}
                             {subSelCount > 0 && !allSubSelected && (
@@ -768,7 +768,7 @@ export default function ServicePage() {
             width: "100%", padding: "16px", borderRadius: 16, border: "none",
             background: matchCount > 0 ? "var(--accent)" : "var(--border)",
             color: matchCount > 0 ? "#fff" : "var(--text-muted)",
-            fontSize: 16, fontWeight: 700, cursor: "pointer",
+            fontSize: 17, fontWeight: 700, cursor: "pointer",
             boxShadow: matchCount > 0 ? "0 6px 20px rgba(249,115,22,.35)" : "0 2px 10px rgba(0,0,0,.1)",
           }}
         >
@@ -936,7 +936,7 @@ export default function ServicePage() {
       <div style={{
         padding: "10px 16px 0", borderBottom: "1px solid var(--border)", background: "var(--bg-card)",
       }}>
-        <h1 style={{ fontSize: 18, fontWeight: 800, color: "var(--accent)", margin: "0 0 8px", cursor: "pointer" }}
+        <h1 style={{ fontSize: 20, fontWeight: 800, color: "var(--accent)", margin: "0 0 8px", cursor: "pointer" }}
           onClick={() => setView("ingredients")}>
           🍳 뭐해먹지?
         </h1>
