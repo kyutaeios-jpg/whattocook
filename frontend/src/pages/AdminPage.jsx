@@ -875,9 +875,10 @@ function SynonymSuggestions({ onAccept }) {
     setChecked(new Set());
     try {
       const { suggestions: items } = await suggestSynonyms();
-      setSuggestions(items || []);
-      // 기본 전체 선택
-      setChecked(new Set(items.map((_, i) => i)));
+      // 대표명 기준 오름차순 정렬
+      const sorted = (items || []).sort((a, b) => a.canonical.localeCompare(b.canonical, "ko"));
+      setSuggestions(sorted);
+      setChecked(new Set(sorted.map((_, i) => i)));
     } catch (err) {
       alert("에러: " + err.message);
     } finally {
@@ -893,8 +894,24 @@ function SynonymSuggestions({ onAccept }) {
     });
   };
 
+  const updateSuggestion = (i, field, value) => {
+    setSuggestions((prev) => prev.map((s, idx) => idx === i ? { ...s, [field]: value } : s));
+  };
+
+  const removeSuggestion = (i) => {
+    setSuggestions((prev) => prev.filter((_, idx) => idx !== i));
+    setChecked((prev) => {
+      const next = new Set();
+      for (const v of prev) {
+        if (v < i) next.add(v);
+        else if (v > i) next.add(v - 1);
+      }
+      return next;
+    });
+  };
+
   const acceptChecked = () => {
-    const accepted = suggestions.filter((_, i) => checked.has(i));
+    const accepted = suggestions.filter((_, i) => checked.has(i)).filter((s) => s.alias.trim() && s.canonical.trim());
     if (!accepted.length) return;
     onAccept(accepted);
     setSuggestions([]);
@@ -903,13 +920,13 @@ function SynonymSuggestions({ onAccept }) {
 
   return (
     <div style={{ marginBottom: 16 }}>
-      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: suggestions.length ? 12 : 0 }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: suggestions.length ? 12 : 0 }}>
         <button onClick={detect} disabled={loading} style={{ ...btnPrimary, background: "#8b5cf6", opacity: loading ? 0.6 : 1 }}>
           {loading ? "AI 분석 중..." : "🤖 동의어 자동 감지"}
         </button>
         {suggestions.length > 0 && (
           <>
-            <span style={{ fontSize: 12, color: C.textMuted }}>{suggestions.length}개 후보</span>
+            <span style={{ fontSize: 12, color: C.textMuted }}>{suggestions.length}개 후보 / {checked.size}개 선택</span>
             <button onClick={() => setChecked(new Set(suggestions.map((_, i) => i)))} style={btnGhost}>전체 선택</button>
             <button onClick={() => setChecked(new Set())} style={btnGhost}>전체 해제</button>
             <button onClick={acceptChecked} style={{ ...btnPrimary }}>
@@ -920,19 +937,30 @@ function SynonymSuggestions({ onAccept }) {
       </div>
 
       {suggestions.length > 0 && (
-        <div style={{ border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden", maxHeight: 300, overflowY: "auto" }}>
-          {suggestions.map((s, i) => (
-            <div key={i} onClick={() => toggleCheck(i)} style={{
-              display: "flex", alignItems: "center", gap: 10, padding: "8px 12px",
-              borderBottom: `1px solid ${C.border}`, cursor: "pointer",
-              background: checked.has(i) ? C.accentBg : "transparent",
-            }}>
-              <span style={{ fontSize: 16, flexShrink: 0 }}>{checked.has(i) ? "✅" : "⬜"}</span>
-              <span style={{ fontSize: 13, color: C.textBright, flex: 1 }}>{s.alias}</span>
-              <span style={{ color: C.textMuted, fontSize: 12 }}>→</span>
-              <span style={{ fontSize: 13, color: C.accent, flex: 1 }}>{s.canonical}</span>
-            </div>
-          ))}
+        <div style={{ border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "32px 1fr 24px 1fr 32px", gap: 6, padding: "8px 12px", borderBottom: `1px solid ${C.border}`, fontSize: 11, color: C.textMuted, fontWeight: 600 }}>
+            <span></span><span>별칭</span><span></span><span>대표명</span><span></span>
+          </div>
+          <div style={{ maxHeight: 400, overflowY: "auto" }}>
+            {suggestions.map((s, i) => (
+              <div key={i} style={{
+                display: "grid", gridTemplateColumns: "32px 1fr 24px 1fr 32px", gap: 6,
+                padding: "5px 12px", borderBottom: `1px solid ${C.border}`, alignItems: "center",
+                background: checked.has(i) ? C.accentBg : "transparent",
+              }}>
+                <span onClick={() => toggleCheck(i)} style={{ cursor: "pointer", fontSize: 16, textAlign: "center" }}>
+                  {checked.has(i) ? "✅" : "⬜"}
+                </span>
+                <input value={s.alias} onChange={(e) => updateSuggestion(i, "alias", e.target.value)}
+                  style={{ ...input, padding: "3px 6px", fontSize: 12 }} />
+                <span style={{ color: C.textMuted, textAlign: "center", fontSize: 11 }}>→</span>
+                <input value={s.canonical} onChange={(e) => updateSuggestion(i, "canonical", e.target.value)}
+                  style={{ ...input, padding: "3px 6px", fontSize: 12 }} />
+                <button onClick={() => removeSuggestion(i)}
+                  style={{ background: "none", border: "none", color: C.red, cursor: "pointer", fontSize: 13 }}>✕</button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
