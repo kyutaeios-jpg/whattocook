@@ -643,7 +643,7 @@ export default function ServicePage() {
       {/* 검색 */}
       <div style={{ padding: "16px 20px 12px" }}>
         <input
-          type="text" placeholder="🔍 재료 검색..." value={search}
+          type="text" placeholder="🔍 목록에 없는 재료도 검색해보세요" value={search}
           onChange={(e) => setSearch(e.target.value)}
           style={{
             width: "100%", padding: "14px 18px", background: "var(--bg-card)",
