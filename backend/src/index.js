@@ -237,13 +237,33 @@ ${synExamples}
   }
 });
 
-// 동의어 수동 추가
+// 동의어 수동 추가 (체인 자동 플래튼)
 app.post("/api/ingredients/synonyms", async (req, res) => {
   const { mappings } = req.body; // { "alias": "canonical", ... }
   if (!mappings) return res.status(400).json({ error: "mappings required" });
   try {
-    await db.saveSynonyms(mappings);
-    res.json({ ok: true, count: Object.keys(mappings).length });
+    // 체인 플래튼: A→B, B→C 이면 A→C, B→C 로 변환
+    const flat = { ...mappings };
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const [alias, canonical] of Object.entries(flat)) {
+        if (flat[canonical]) {
+          flat[alias] = flat[canonical];
+          changed = true;
+        }
+      }
+    }
+    // 자기 자신을 가리키는 것 제거
+    for (const [alias, canonical] of Object.entries(flat)) {
+      if (alias === canonical) delete flat[alias];
+    }
+
+    const flattened = Object.keys(flat).length !== Object.keys(mappings).length ||
+      Object.entries(flat).some(([k, v]) => mappings[k] !== v);
+
+    await db.saveSynonyms(flat);
+    res.json({ ok: true, count: Object.keys(flat).length, flattened });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
