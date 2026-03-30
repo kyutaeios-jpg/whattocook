@@ -195,6 +195,40 @@ function SelectedTags({ selected, toggle, clearAll }) {
   );
 }
 
+/* ───── 공유 버튼 ───── */
+
+function ShareButton({ recipe, style = {} }) {
+  const [copied, setCopied] = useState(false);
+  const url = `https://cookable.today/recipe/${recipe.id}`;
+  const text = `${recipe.title} - 뭐해먹지?`;
+
+  const handleShare = async (e) => {
+    e.stopPropagation();
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: text, url });
+        return;
+      } catch {}
+    }
+    await navigator.clipboard.writeText(url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <button onClick={handleShare} style={{
+      background: "var(--bg-input)", border: "none", borderRadius: 8,
+      padding: "8px 14px", cursor: "pointer",
+      display: "flex", alignItems: "center", gap: 6,
+      color: copied ? "var(--green)" : "var(--text-muted)",
+      fontSize: 14, fontWeight: 500,
+      ...style,
+    }}>
+      {copied ? "✓ 복사됨" : "🔗 공유"}
+    </button>
+  );
+}
+
 /* ───── 레시피 카드 ───── */
 
 function RecipeCard({ recipe, match, onClick, selected, selectedCount }) {
@@ -288,11 +322,7 @@ function DetailPanel({ recipe, match, onClose }) {
           padding: "14px 20px", borderBottom: "1px solid var(--border)",
           background: "var(--bg-card)", position: "sticky", top: 0, zIndex: 1,
         }}>
-          <a href={`/recipe/${recipe.id}`} style={{
-            color: "var(--accent)", fontSize: 14, textDecoration: "none", fontWeight: 600,
-          }}>
-            상세 페이지 →
-          </a>
+          <ShareButton recipe={recipe} />
           <button onClick={onClose} style={{
             background: "var(--bg-input)", border: "none", borderRadius: 8,
             width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center",

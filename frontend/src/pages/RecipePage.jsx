@@ -33,6 +33,33 @@ function getYoutubeId(recipe) {
   } catch { return ""; }
 }
 
+function ShareRecipeButton({ title }) {
+  const [copied, setCopied] = useState(false);
+  const url = window.location.href;
+  const text = `${title} - 뭐해먹지?`;
+
+  const handleShare = async () => {
+    if (navigator.share) {
+      try { await navigator.share({ title: text, url }); return; } catch {}
+    }
+    await navigator.clipboard.writeText(url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <button onClick={handleShare} style={{
+      background: "var(--bg-input)", border: "none", borderRadius: 10,
+      padding: "8px 16px", cursor: "pointer", flexShrink: 0,
+      display: "flex", alignItems: "center", gap: 6,
+      color: copied ? "var(--green)" : "var(--text-muted)",
+      fontSize: 14, fontWeight: 500,
+    }}>
+      {copied ? "✓ 복사됨" : "🔗 공유"}
+    </button>
+  );
+}
+
 function RecipeShoppingLinks({ ingredients }) {
   const [shop, setShop] = useState("coupang");
   return (
@@ -106,9 +133,12 @@ export default function RecipePage() {
         ← 뭐해먹지?
       </Link>
 
-      <h1 style={{ fontSize: 26, fontWeight: 800, color: "var(--text-bright)", margin: "16px 0 8px" }}>
-        {recipe.title}
-      </h1>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginTop: 16, marginBottom: 8 }}>
+        <h1 style={{ fontSize: 26, fontWeight: 800, color: "var(--text-bright)", margin: 0, flex: 1 }}>
+          {recipe.title}
+        </h1>
+        <ShareRecipeButton title={recipe.title} />
+      </div>
       <p style={{ fontSize: 15, color: "var(--text-muted)", marginBottom: 20 }}>
         {recipe.channel} · {recipe.category} · {recipe.difficulty}
         {recipe.time && ` · ${recipe.time}`}
