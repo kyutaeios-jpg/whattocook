@@ -781,6 +781,101 @@ app.post("/api/jobs/:jobId/cancel", (req, res) => {
   res.json({ ok: true });
 });
 
+// ── sitemap.xml (동적 생성) ──
+
+app.get("/sitemap.xml", async (_req, res) => {
+  try {
+    const recipes = await db.getAllRecipes();
+    const urls = recipes.map((r) => `
+  <url>
+    <loc>https://cookable.today/recipe/${r.id}</loc>
+    <lastmod>${new Date(r.createdAt).toISOString().split("T")[0]}</lastmod>
+    <changefreq>monthly</changefreq>
+  </url>`).join("");
+
+    res.set("Content-Type", "application/xml");
+    res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://cookable.today/</loc>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>${urls}
+</urlset>`);
+  } catch (err) {
+    res.status(500).send("Error generating sitemap");
+  }
+});
+
+// ── 레시피 페이지 (SEO: 동적 메타태그 + JSON-LD) ──
+
+const fs = require("fs");
+let indexHtml = "";
+try { indexHtml = fs.readFileSync(path.join(publicDir, "index.html"), "utf8"); } catch {}
+
+app.get("/recipe/:id", async (req, res) => {
+  try {
+    const recipe = await db.getRecipeById(req.params.id);
+    if (!recipe || !indexHtml) {
+      return res.send(indexHtml || "Not found");
+    }
+
+    const title = `${recipe.title} - 뭐해먹지?`;
+    const description = `${recipe.channel}의 ${recipe.title} 레시피. 재료: ${(recipe.ingredients || []).slice(0, 6).map((i) => typeof i.name === "string" ? i.name : "").filter(Boolean).join(", ")} 등`;
+    const ytId = recipe.youtubeId || "";
+    const image = ytId ? `https://img.youtube.com/vi/${ytId}/hqdefault.jpg` : "https://cookable.today/icons/icon-512x512.png";
+    const url = `https://cookable.today/recipe/${recipe.id}`;
+
+    // JSON-LD Recipe Schema
+    const jsonLd = JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "Recipe",
+      name: recipe.title,
+      author: { "@type": "Person", name: recipe.channel || "뭐해먹지?" },
+      image: image,
+      description: description,
+      recipeCategory: recipe.category,
+      recipeCuisine: "Korean",
+      difficulty: recipe.difficulty,
+      ...(recipe.time ? { totalTime: recipe.time } : {}),
+      recipeIngredient: (recipe.ingredients || []).map((i) =>
+        typeof i.name === "string" ? `${i.name} ${i.amount || ""}`.trim() : ""
+      ).filter(Boolean),
+      recipeInstructions: (recipe.steps || []).map((step, i) => ({
+        "@type": "HowToStep",
+        position: i + 1,
+        text: typeof step === "string" ? step : "",
+      })),
+      ...(recipe.url ? { video: { "@type": "VideoObject", name: recipe.title, embedUrl: `https://www.youtube.com/embed/${ytId}`, thumbnailUrl: image } } : {}),
+    });
+
+    // HTML에 메타태그 + JSON-LD 삽입
+    const html = indexHtml
+      .replace(/<title>[^<]*<\/title>/, `<title>${title}</title>`)
+      .replace(
+        "</head>",
+        `<meta name="description" content="${description.replace(/"/g, "&quot;")}" />
+    <meta property="og:title" content="${title.replace(/"/g, "&quot;")}" />
+    <meta property="og:description" content="${description.replace(/"/g, "&quot;")}" />
+    <meta property="og:image" content="${image}" />
+    <meta property="og:url" content="${url}" />
+    <meta property="og:type" content="article" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="${title.replace(/"/g, "&quot;")}" />
+    <meta name="twitter:description" content="${description.replace(/"/g, "&quot;")}" />
+    <meta name="twitter:image" content="${image}" />
+    <link rel="canonical" href="${url}" />
+    <script type="application/ld+json">${jsonLd}</script>
+    </head>`
+      );
+
+    res.send(html);
+  } catch (err) {
+    console.error("Recipe page error:", err);
+    res.send(indexHtml);
+  }
+});
+
 // ── SPA fallback ──
 
 app.use((req, res, next) => {
