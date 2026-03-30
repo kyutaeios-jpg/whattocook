@@ -181,9 +181,11 @@ app.get("/api/ingredients/categories", async (_req, res) => {
     // 카테고리별 그룹
     const result = {};
     for (const [name, count] of Object.entries(freq)) {
-      const cat = cached[name] || "기타";
+      const info = cached[name] || { category: "기타", subcategory: null };
+      const cat = typeof info === "object" ? info.category : info;
+      const sub = typeof info === "object" ? (info.subcategory || "") : "";
       if (!result[cat]) result[cat] = [];
-      result[cat].push({ name, count, category: cat });
+      result[cat].push({ name, count, category: cat, subcategory: sub });
     }
 
     // 카테고리 내 빈도순 정렬
@@ -197,14 +199,14 @@ app.get("/api/ingredients/categories", async (_req, res) => {
   }
 });
 
-// 재료 카테고리 일괄 업데이트
+// 재료 카테고리 일괄 업데이트 (서브카테고리 포함)
 app.put("/api/ingredients/categories", async (req, res) => {
-  const { updates } = req.body; // [{ name, category }, ...]
+  const { updates } = req.body; // [{ name, category, subcategory }, ...]
   if (!updates?.length) return res.status(400).json({ error: "updates required" });
   try {
     const map = {};
     for (const u of updates) {
-      if (u.name && u.category) map[u.name] = u.category;
+      if (u.name && u.category) map[u.name] = { category: u.category, subcategory: u.subcategory || null };
     }
     await db.saveCachedCategories(map);
     res.json({ ok: true, count: Object.keys(map).length });

@@ -999,7 +999,12 @@ function IngredientManager() {
     const list = [];
     for (const [cat, items] of Object.entries(catData)) {
       for (const item of items) {
-        list.push({ ...item, currentCat: catChanges[item.name] || cat });
+        const changes = catChanges[item.name] || {};
+        list.push({
+          ...item,
+          currentCat: changes.category || item.category || cat,
+          currentSub: changes.subcategory !== undefined ? changes.subcategory : (item.subcategory || ""),
+        });
       }
     }
     return list.sort((a, b) => a.name.localeCompare(b.name, "ko"));
@@ -1015,7 +1020,9 @@ function IngredientManager() {
   const catChangedCount = Object.keys(catChanges).length;
 
   const saveCatChanges = async () => {
-    const updates = Object.entries(catChanges).map(([name, category]) => ({ name, category }));
+    const updates = Object.entries(catChanges).map(([name, val]) => ({
+      name, category: val.category, subcategory: val.subcategory,
+    }));
     if (!updates.length) return;
     setCatSaving(true);
     try {
@@ -1097,22 +1104,27 @@ function IngredientManager() {
           )}
 
           <div style={{ border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 50px 130px", gap: 8, padding: "8px 12px", borderBottom: `1px solid ${C.border}`, fontSize: 11, color: C.textMuted, fontWeight: 600 }}>
-              <span>재료명</span><span>수</span><span>카테고리</span>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 40px 110px 110px", gap: 6, padding: "8px 12px", borderBottom: `1px solid ${C.border}`, fontSize: 11, color: C.textMuted, fontWeight: 600 }}>
+              <span>재료명</span><span>수</span><span>카테고리</span><span>서브카테고리</span>
             </div>
             <div style={{ maxHeight: 450, overflowY: "auto" }}>
               {catFiltered.map((item) => (
                 <div key={item.name} style={{
-                  display: "grid", gridTemplateColumns: "1fr 50px 130px", gap: 8,
-                  padding: "5px 12px", borderBottom: `1px solid ${C.border}`, alignItems: "center",
+                  display: "grid", gridTemplateColumns: "1fr 40px 110px 110px", gap: 6,
+                  padding: "4px 12px", borderBottom: `1px solid ${C.border}`, alignItems: "center",
                   background: catChanges[item.name] ? C.accentBg : "transparent",
                 }}>
                   <span style={{ fontSize: 13, color: C.textBright }}>{item.name}</span>
                   <span style={{ fontSize: 12, color: C.textMuted, fontFamily: "var(--mono, monospace)", textAlign: "center" }}>{item.count}</span>
-                  <select value={item.currentCat} onChange={(e) => setCatChanges((p) => ({ ...p, [item.name]: e.target.value }))}
-                    style={{ ...input, padding: "3px 4px", fontSize: 11, cursor: "pointer" }}>
+                  <select value={item.currentCat} onChange={(e) => setCatChanges((p) => ({
+                    ...p, [item.name]: { category: e.target.value, subcategory: (p[item.name]?.subcategory !== undefined ? p[item.name].subcategory : item.currentSub) }
+                  }))} style={{ ...input, padding: "2px 4px", fontSize: 11, cursor: "pointer" }}>
                     {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
                   </select>
+                  <input value={item.currentSub} onChange={(e) => setCatChanges((p) => ({
+                    ...p, [item.name]: { category: (p[item.name]?.category || item.currentCat), subcategory: e.target.value }
+                  }))} placeholder="서브카테고리"
+                    style={{ ...input, padding: "2px 6px", fontSize: 11 }} />
                 </div>
               ))}
               {catFiltered.length === 0 && <p style={{ color: C.textMuted, fontSize: 12, textAlign: "center", padding: 20 }}>결과 없음</p>}
