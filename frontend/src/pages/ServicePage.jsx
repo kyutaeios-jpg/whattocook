@@ -280,64 +280,83 @@ function DetailPanel({ recipe, match, onClose }) {
         position: "fixed", top: 0, right: 0, bottom: 0,
         width: "min(440px, 100vw)", background: "var(--bg)", zIndex: 100,
         borderLeft: "1px solid var(--border)", overflowY: "auto",
-        padding: "24px 20px", display: "flex", flexDirection: "column", gap: 18,
+        display: "flex", flexDirection: "column",
       }}>
-        <button onClick={onClose} style={{ alignSelf: "flex-end", background: "none", border: "none", color: "var(--text-muted)", fontSize: 24, cursor: "pointer" }}>
-          ✕
-        </button>
-
-        <div>
-          <span style={{ fontSize: 40 }}>{emoji}</span>
-          <h2 style={{ fontSize: 22, fontWeight: 700, color: "var(--text-bright)", marginTop: 8 }}>
-            {recipe.title}
-          </h2>
-          <p style={{ fontSize: 14, color: "var(--text-muted)", marginTop: 4 }}>
-            {recipe.channel} · {recipe.difficulty}
-          </p>
+        {/* 상단 고정 헤더 */}
+        <div style={{
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+          padding: "14px 20px", borderBottom: "1px solid var(--border)",
+          background: "var(--bg-card)", position: "sticky", top: 0, zIndex: 1,
+        }}>
+          <a href={`/recipe/${recipe.id}`} style={{
+            color: "var(--accent)", fontSize: 14, textDecoration: "none", fontWeight: 600,
+          }}>
+            상세 페이지 →
+          </a>
+          <button onClick={onClose} style={{
+            background: "var(--bg-input)", border: "none", borderRadius: 8,
+            width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center",
+            color: "var(--text-muted)", fontSize: 18, cursor: "pointer",
+          }}>
+            ✕
+          </button>
         </div>
 
-        <YoutubeEmbed videoId={ytId} title={recipe.title} />
-
-        {/* 재료 (분량 포함) */}
-        <div>
-          <h4 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 10 }}>재료</h4>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            {(recipe.ingredients || []).map((ing, i) => {
-              const name = typeof ing.name === "string" ? ing.name : "";
-              const amount = typeof ing.amount === "string" ? ing.amount : "";
-              if (!name.trim()) return null;
-              const isMatched = match.matched.some((m) => m === name.trim().replace(/\s+/g, "").toLowerCase() || name.toLowerCase().replace(/\s+/g, "").includes(m));
-              return (
-                <div key={i} style={{
-                  display: "flex", justifyContent: "space-between", alignItems: "center",
-                  padding: "6px 12px", borderRadius: 8,
-                  background: isMatched ? "var(--green-bg)" : "var(--red-bg)",
-                }}>
-                  <span style={{ fontSize: 14, color: "var(--text-bright)", fontWeight: 500 }}>
-                    {isMatched ? "✓ " : "✗ "}{name}
-                  </span>
-                  <span style={{ fontSize: 13, color: "var(--text-muted)" }}>{amount}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* 조리 순서 */}
-        {recipe.steps?.length > 0 && (
+        {/* 콘텐츠 */}
+        <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: 18 }}>
           <div>
-            <h4 style={{ fontSize: 15, fontWeight: 600, color: "var(--text)", marginBottom: 10 }}>조리 순서</h4>
-            <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 8, margin: 0 }}>
-              {recipe.steps.map((step, i) => (
-                <li key={i} style={{ fontSize: 14, color: "var(--text)", lineHeight: 1.6 }}>
-                  {typeof step === "string" ? step : ""}
-                </li>
-              ))}
-            </ol>
+            <span style={{ fontSize: 40 }}>{emoji}</span>
+            <h2 style={{ fontSize: 22, fontWeight: 700, color: "var(--text-bright)", marginTop: 8 }}>
+              {recipe.title}
+            </h2>
+            <p style={{ fontSize: 14, color: "var(--text-muted)", marginTop: 4 }}>
+              {recipe.channel} · {recipe.difficulty}
+            </p>
           </div>
-        )}
 
-        {match.missing.length > 0 && <ShoppingLinks items={match.missing} />}
+          <YoutubeEmbed videoId={ytId} title={recipe.title} />
+
+          {/* 재료 (분량 포함) */}
+          <div>
+            <h4 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 10 }}>재료</h4>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {(recipe.ingredients || []).map((ing, i) => {
+                const name = typeof ing.name === "string" ? ing.name : "";
+                const amount = typeof ing.amount === "string" ? ing.amount : "";
+                if (!name.trim()) return null;
+                const isMatched = match.matched.some((m) => m === name.trim().replace(/\s+/g, "").toLowerCase() || name.toLowerCase().replace(/\s+/g, "").includes(m));
+                return (
+                  <div key={i} style={{
+                    display: "flex", justifyContent: "space-between", alignItems: "center",
+                    padding: "8px 14px", borderRadius: 10,
+                    background: isMatched ? "var(--green-bg)" : "var(--red-bg)",
+                  }}>
+                    <span style={{ fontSize: 15, color: "var(--text-bright)", fontWeight: 500 }}>
+                      {isMatched ? "✓ " : "✗ "}{name}
+                    </span>
+                    <span style={{ fontSize: 14, color: "var(--text-muted)" }}>{amount}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 조리 순서 */}
+          {recipe.steps?.length > 0 && (
+            <div>
+              <h4 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 10 }}>조리 순서</h4>
+              <ol style={{ paddingLeft: 22, display: "flex", flexDirection: "column", gap: 8, margin: 0 }}>
+                {recipe.steps.map((step, i) => (
+                  <li key={i} style={{ fontSize: 15, color: "var(--text)", lineHeight: 1.6 }}>
+                    {typeof step === "string" ? step : ""}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+
+          {match.missing.length > 0 && <ShoppingLinks items={match.missing} />}
+        </div>
       </div>
     </>
   );

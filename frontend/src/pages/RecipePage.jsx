@@ -2,6 +2,26 @@ import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 
 const API_URL = import.meta.env.VITE_API_URL || "";
+const COUPANG_LPTAG = "AF8567820";
+
+function shopUrl(name, shop) {
+  const q = encodeURIComponent(name);
+  if (shop === "naver") return `https://shopping.naver.com/ns/search?query=${q}&searchMethod=direct`;
+  return `https://www.coupang.com/np/search?q=${q}&lptag=${COUPANG_LPTAG}&pageType=SEARCH&pageValue=${q}`;
+}
+
+const CoupangLogo = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+    <rect width="24" height="24" rx="4" fill="#E31837"/>
+    <path d="M6 12a6 6 0 1112 0 6 6 0 01-12 0zm6-3.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7z" fill="#fff"/>
+  </svg>
+);
+const NaverLogo = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+    <rect width="24" height="24" rx="4" fill="#03C75A"/>
+    <path d="M7 7h3.2l3.6 5.2V7H17v10h-3.2L10.2 11.8V17H7V7z" fill="#fff"/>
+  </svg>
+);
 
 function getYoutubeId(recipe) {
   if (recipe.youtubeId) return recipe.youtubeId;
@@ -11,6 +31,45 @@ function getYoutubeId(recipe) {
     if (u.hostname.includes("youtu.be")) return u.pathname.slice(1);
     return u.searchParams.get("v") || "";
   } catch { return ""; }
+}
+
+function RecipeShoppingLinks({ ingredients }) {
+  const [shop, setShop] = useState("coupang");
+  return (
+    <div style={{ marginBottom: 28 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--text-bright)" }}>재료 구매</h2>
+        <div style={{ display: "flex", gap: 4 }}>
+          {[
+            { key: "coupang", label: "쿠팡", Logo: CoupangLogo },
+            { key: "naver", label: "네이버", Logo: NaverLogo },
+          ].map(({ key, label, Logo }) => (
+            <button key={key} onClick={() => setShop(key)} style={{
+              padding: "5px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer",
+              border: shop === key ? "1.5px solid var(--accent)" : "1.5px solid var(--border)",
+              background: shop === key ? "var(--accent-bg)" : "transparent",
+              color: shop === key ? "var(--accent)" : "var(--text-muted)",
+              display: "flex", alignItems: "center", gap: 5,
+            }}>
+              <Logo /> {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 8 }}>
+        {ingredients.map((ing, i) => (
+          <a key={i} href={shopUrl(ing.name, shop)} target="_blank" rel="noopener noreferrer"
+            style={{
+              display: "flex", alignItems: "center", gap: 8, padding: "10px 14px",
+              borderRadius: 10, background: "var(--bg-input)", color: "var(--accent)",
+              fontSize: 14, textDecoration: "none", fontWeight: 500,
+            }}>
+            {shop === "coupang" ? <CoupangLogo /> : <NaverLogo />} {ing.name}
+          </a>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export default function RecipePage() {
@@ -101,11 +160,14 @@ export default function RecipePage() {
         <a href={recipe.url} target="_blank" rel="noopener noreferrer" style={{
           display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
           padding: "14px", borderRadius: 14, background: "#e53e3e", color: "#fff",
-          fontSize: 16, fontWeight: 700, textDecoration: "none", marginBottom: 20,
+          fontSize: 16, fontWeight: 700, textDecoration: "none", marginBottom: 28,
         }}>
           ▶ YouTube에서 보기
         </a>
       )}
+
+      {/* 재료 구매 */}
+      {ingredients.length > 0 && <RecipeShoppingLinks ingredients={ingredients} />}
     </div>
   );
 }
