@@ -92,10 +92,71 @@ app.get("/api/ingredients/synonyms", async (_req, res) => {
 // 재료 카테고리 캐시 조회 (Claude 호출 없음 — 서비스 페이지용)
 app.get("/api/ingredients/cached-categories", async (_req, res) => {
   try {
-    const allNames = await db.getAllIngredientNames();
-    const cached = await db.getCachedCategories(allNames);
+    const cached = await db.getAllCachedCategories();
     res.json(cached);
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 서브카테고리 자동 분류 (Claude)
+app.post("/api/ingredients/assign-subcategories", async (req, res) => {
+  try {
+    const cached = await db.getAllCachedCategories();
+    // subcategory가 없는 재료만 대상
+    const needSub = Object.entries(cached).filter(([_, v]) => !v.subcategory);
+
+    if (!needSub.length) return res.json({ ok: true, assigned: 0 });
+
+    const prompt = `아래 재료들에 서브카테고리를 할당해줘.
+서브카테고리는 마트 매대 기준으로 묶이는 중분류야.
+
+예시:
+- 육류 → 돼지고기, 소고기, 닭고기, 양고기, 가공육(햄/소시지)
+- 해산물 → 생선, 새우/게, 조개류, 오징어/낙지, 건어물, 해산물가공품
+- 채소 → 잎채소, 뿌리채소, 열매채소, 버섯류, 콩나물/숙주
+- 양념/소스 → 간장류, 장류, 기름류, 소금/설탕, 가루양념, 소스류, 액젓류
+- 곡물/면/두부 → 밥/쌀, 면류, 두부류, 가루류, 떡류
+- 과일 → 과일
+- 견과류 → 견과류
+- 유제품/계란 → 우유/크림, 치즈, 버터, 계란
+- 액체/육수 → 물/육수, 음료
+- 가공식품 → 라면, 통조림, 냉동식품, 즉석식품, 과자/간식
+- 기타 → 기타
+
+서브카테고리명은 짧고 직관적으로. 위 예시에 없는 것은 적절히 만들어.
+반드시 JSON으로만 응답. 형식: { "재료명": "서브카테고리", ... }
+`;
+
+    const updates = {};
+    for (let i = 0; i < needSub.length; i += 50) {
+      const batch = needSub.slice(i, i + 50);
+      const batchList = batch.map(([name, v]) => `${name} (${v.category})`).join(", ");
+      try {
+        const message = await anthropic.messages.create({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 2048,
+          messages: [{ role: "user", content: prompt + batchList }],
+        });
+        const parsed = parseClaudeJson(message.content[0].text);
+        Object.assign(updates, parsed);
+        console.log(`[서브카테고리] 배치 ${Math.floor(i/50)+1}: ${Object.keys(parsed).length}개`);
+      } catch (err) {
+        console.error(`[서브카테고리] 배치 에러:`, err.message);
+      }
+      if (i + 50 < needSub.length) await new Promise((r) => setTimeout(r, 1000));
+    }
+
+    // DB 업데이트
+    for (const [name, subcategory] of Object.entries(updates)) {
+      if (cached[name]) {
+        await db.saveCachedCategories({ [name]: { category: cached[name].category, subcategory } });
+      }
+    }
+
+    res.json({ ok: true, assigned: Object.keys(updates).length });
+  } catch (err) {
+    console.error("Assign subcategories error:", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -464,13 +525,20 @@ app.post("/api/extract", async (req, res) => {
 
 // ── 재료 카테고리 분류: POST /api/ingredients/classify ──
 
-const CLASSIFY_PROMPT = `아래 재료 목록을 다음 카테고리 중 하나로 분류해줘.
+const CLASSIFY_PROMPT = `아래 재료 목록에 카테고리와 서브카테고리를 할당해줘.
+
 카테고리: 육류, 해산물, 채소, 과일, 견과류, 양념/소스, 곡물/면/두부, 유제품/계란, 액체/육수, 가공식품, 기타
 
-가공식품 예시: 미트볼, 소시지, 햄, 어묵, 라면, 초콜릿, 과자, 통조림 등 공장 제조 식품
+서브카테고리는 마트 매대 기준 중분류:
+- 육류: 돼지고기, 소고기, 닭고기, 양고기, 오리고기 등
+- 해산물: 생선, 새우/게, 조개류, 오징어/낙지, 건어물 등
+- 채소: 잎채소, 뿌리채소, 열매채소, 버섯류 등
+- 양념/소스: 간장류, 장류, 기름류, 소금/설탕, 가루양념, 소스류, 액젓류 등
+- 곡물/면/두부: 밥/쌀, 면류, 두부류, 가루류, 떡류 등
+- 가공식품: 라면, 통조림, 냉동식품, 즉석식품, 과자/간식 등
 
-반드시 JSON 형식으로만 응답해. 다른 텍스트 포함하지 마.
-형식: { "재료명": "카테고리", ... }
+반드시 JSON 형식으로만 응답해.
+형식: { "재료명": {"category": "카테고리", "subcategory": "서브카테고리"}, ... }
 
 재료 목록:
 `;
@@ -513,15 +581,21 @@ app.post("/api/ingredients/classify", async (req, res) => {
       }
     }
 
-    // 3) "기타"가 아닌 것만 DB에 캐시 저장
+    // 3) DB에 캐시 저장 (기타 제외)
     const toCache = {};
     for (const [k, v] of Object.entries(newClassified)) {
-      if (v !== "기타") toCache[k] = v;
+      const cat = typeof v === "string" ? v : v?.category;
+      const sub = typeof v === "string" ? null : v?.subcategory;
+      if (cat && cat !== "기타") toCache[k] = { category: cat, subcategory: sub };
     }
     if (Object.keys(toCache).length) await db.saveCachedCategories(toCache);
 
     // 4) 합쳐서 반환
-    res.json({ ...cached, ...newClassified });
+    const result = { ...cached };
+    for (const [k, v] of Object.entries(newClassified)) {
+      result[k] = typeof v === "string" ? { category: v, subcategory: null } : v;
+    }
+    res.json(result);
   } catch (err) {
     console.error("Classify error:", err);
     // 에러 시에도 캐시된 것은 반환

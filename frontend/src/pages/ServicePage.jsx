@@ -484,10 +484,11 @@ export default function ServicePage() {
 
   const isClassified = Object.keys(ingredientCategoryMap).length > 0;
 
-  const ingredientsByCategory = useMemo(() => {
+  // 3단계 구조: { "🥩 육류": { "돼지고기": ["목살", "삼겹살"], "소고기": [...] }, ... }
+  const ingredientHierarchy = useMemo(() => {
     if (classifyLoading || (!isClassified && recipes.length > 0)) return {};
 
-    const map = {};
+    const tree = {};
     const seen = new Set();
     for (const r of recipes) {
       for (const ing of r.ingredients || []) {
@@ -497,37 +498,51 @@ export default function ServicePage() {
         if (seen.has(key)) continue;
         seen.add(key);
         const displayName = nameToDisplay[key] || name;
-        const rawCat = ingredientCategoryMap[name] || ingredientCategoryMap[displayName] || "기타";
+        const info = ingredientCategoryMap[name] || ingredientCategoryMap[displayName];
+        const rawCat = (info && typeof info === "object") ? info.category : (typeof info === "string" ? info : "기타");
+        const rawSub = (info && typeof info === "object") ? (info.subcategory || "기타") : "기타";
         const cat = `${EMOJI_MAP[rawCat] || "📦"} ${rawCat}`;
-        if (!map[cat]) map[cat] = [];
-        map[cat].push(displayName);
+
+        if (!tree[cat]) tree[cat] = {};
+        if (!tree[cat][rawSub]) tree[cat][rawSub] = [];
+        tree[cat][rawSub].push(displayName);
       }
     }
-    // 빈도순 정렬
-    const result = {};
-    for (const rawCat of CAT_ORDER) {
-      const cat = `${EMOJI_MAP[rawCat] || "📦"} ${rawCat}`;
-      if (map[cat]?.length) {
-        result[cat] = map[cat].sort((a, b) => {
+    // 각 서브카테고리 내 빈도순 정렬
+    for (const cat of Object.keys(tree)) {
+      for (const sub of Object.keys(tree[cat])) {
+        tree[cat][sub].sort((a, b) => {
           const fa = ingredientFrequency[normalizeKey(a)] || 0;
           const fb = ingredientFrequency[normalizeKey(b)] || 0;
           return fb - fa;
         });
       }
     }
+    // 카테고리 순서 정렬
+    const result = {};
+    for (const rawCat of CAT_ORDER) {
+      const cat = `${EMOJI_MAP[rawCat] || "📦"} ${rawCat}`;
+      if (tree[cat]) result[cat] = tree[cat];
+    }
     return result;
   }, [recipes, ingredientCategoryMap, nameToDisplay, normalizeKey, classifyLoading, ingredientFrequency]);
 
-  const filteredIngredients = useMemo(() => {
-    if (!search.trim()) return ingredientsByCategory;
+  // 검색 필터
+  const filteredHierarchy = useMemo(() => {
+    if (!search.trim()) return ingredientHierarchy;
     const q = search.trim().toLowerCase();
     const result = {};
-    for (const [cat, list] of Object.entries(ingredientsByCategory)) {
-      const filtered = list.filter((n) => n.toLowerCase().includes(q));
-      if (filtered.length) result[cat] = filtered;
+    for (const [cat, subs] of Object.entries(ingredientHierarchy)) {
+      const filteredSubs = {};
+      for (const [sub, items] of Object.entries(subs)) {
+        // 서브카테고리명 또는 재료명에 매칭
+        const filtered = items.filter((n) => n.toLowerCase().includes(q) || sub.toLowerCase().includes(q));
+        if (filtered.length) filteredSubs[sub] = filtered;
+      }
+      if (Object.keys(filteredSubs).length) result[cat] = filteredSubs;
     }
     return result;
-  }, [ingredientsByCategory, search]);
+  }, [ingredientHierarchy, search]);
 
   const selectedNorm = useMemo(() => {
     return new Set([...selected].map((s) => normalizeKey(s)));
@@ -579,14 +594,21 @@ export default function ServicePage() {
     return next;
   });
 
-  // 카테고리별 선택된 재료 수
-  const selectedCountByCat = useMemo(() => {
-    const counts = {};
-    for (const [cat, list] of Object.entries(ingredientsByCategory)) {
-      counts[cat] = list.filter((n) => selected.has(n)).length;
-    }
-    return counts;
-  }, [ingredientsByCategory, selected]);
+  // 서브카테고리 선택 토글 (해당 서브의 모든 재료를 선택/해제)
+  const toggleSubcategory = useCallback((items) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      const allSelected = items.every((n) => next.has(n));
+      if (allSelected) {
+        items.forEach((n) => next.delete(n));
+      } else {
+        items.forEach((n) => next.add(n));
+      }
+      return next;
+    });
+  }, []);
+
+  const [openSubs, setOpenSubs] = useState(new Set());
 
   /* ───── 재료 선택 뷰 ───── */
   const ingredientsView = (
@@ -610,7 +632,7 @@ export default function ServicePage() {
         <SelectedTags selected={selected} toggle={toggle} clearAll={() => setSelected(new Set())} />
       )}
 
-      {/* 카테고리 아코디언 */}
+      {/* 3단계 아코디언: 카테고리 → 서브카테고리 → 재료 */}
       <div style={{ flex: 1, overflowY: "auto", padding: "0 20px 100px" }}>
         {(classifyLoading || (!isClassified && recipes.length > 0)) ? (
           <p style={{ color: "var(--text-muted)", fontSize: 15, marginTop: 40, textAlign: "center" }}>
@@ -618,59 +640,84 @@ export default function ServicePage() {
           </p>
         ) : (
           <>
-            {Object.entries(filteredIngredients).map(([cat, list]) => {
-              const isOpen = openCats.has(cat) || search.trim();
-              const selCount = selectedCountByCat[cat] || 0;
+            {Object.entries(filteredHierarchy).map(([cat, subs]) => {
+              const isCatOpen = openCats.has(cat) || search.trim();
+              const allItems = Object.values(subs).flat();
+              const catSelCount = allItems.filter((n) => selected.has(n)).length;
+
               return (
                 <div key={cat} style={{
                   marginBottom: 8, background: "var(--bg-card)", borderRadius: 12,
-                  border: selCount > 0 ? "1.5px solid var(--accent-border)" : "1.5px solid var(--border)",
-                  overflow: "hidden",
-                  boxShadow: "0 1px 3px rgba(0,0,0,.03)",
+                  border: catSelCount > 0 ? "1.5px solid var(--accent-border)" : "1.5px solid var(--border)",
+                  overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,.03)",
                 }}>
                   {/* 카테고리 헤더 */}
                   <button onClick={() => toggleCat(cat)} style={{
                     width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center",
                     padding: "12px 16px", background: "none", border: "none", cursor: "pointer",
                   }}>
-                    <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text-bright)" }}>
-                      {cat}
-                    </span>
-                    <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      {selCount > 0 && (
-                        <span style={{
-                          padding: "2px 8px", borderRadius: 10,
-                          background: "var(--accent)", color: "#fff",
-                          fontSize: 11, fontWeight: 700,
-                        }}>
-                          {selCount}
+                    <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text-bright)" }}>{cat}</span>
+                    <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      {catSelCount > 0 && (
+                        <span style={{ padding: "2px 8px", borderRadius: 10, background: "var(--accent)", color: "#fff", fontSize: 11, fontWeight: 700 }}>
+                          {catSelCount}
                         </span>
                       )}
-                      <span style={{
-                        padding: "2px 8px", borderRadius: 10,
-                        background: "var(--bg-input)", color: "var(--text-muted)",
-                        fontSize: 11,
-                      }}>
-                        {list.length}
-                      </span>
-                      <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
-                        {isOpen ? "▲" : "▼"}
-                      </span>
+                      <span style={{ color: "var(--text-muted)", fontSize: 12 }}>{isCatOpen ? "▲" : "▼"}</span>
                     </span>
                   </button>
 
-                  {/* 재료 칩 */}
-                  {isOpen && (
-                    <div style={{ padding: "0 16px 14px", display: "flex", flexWrap: "wrap", gap: 7 }}>
-                      {list.map((name) => (
-                        <Chip key={name} label={name} active={selected.has(name)} onClick={() => toggle(name)} />
-                      ))}
-                    </div>
-                  )}
+                  {/* 서브카테고리 목록 */}
+                  {isCatOpen && Object.entries(subs).map(([sub, items]) => {
+                    const subKey = `${cat}::${sub}`;
+                    const isSubOpen = openSubs.has(subKey) || search.trim();
+                    const subSelCount = items.filter((n) => selected.has(n)).length;
+                    const allSubSelected = subSelCount === items.length;
+
+                    return (
+                      <div key={subKey} style={{ borderTop: "1px solid var(--border)" }}>
+                        {/* 서브카테고리 헤더 — 클릭으로 전체 선택/해제 */}
+                        <div style={{ display: "flex", alignItems: "center", padding: "8px 16px", gap: 8 }}>
+                          <button onClick={() => toggleSubcategory(items)} style={{
+                            padding: "5px 14px", borderRadius: 20, border: "none", cursor: "pointer",
+                            background: allSubSelected ? "var(--accent)" : subSelCount > 0 ? "var(--accent-bg)" : "var(--bg-input)",
+                            color: allSubSelected ? "#fff" : subSelCount > 0 ? "var(--accent)" : "var(--text)",
+                            fontSize: 14, fontWeight: 600, flex: 1, textAlign: "left",
+                          }}>
+                            {sub}
+                            {subSelCount > 0 && !allSubSelected && (
+                              <span style={{ marginLeft: 6, fontSize: 11, opacity: 0.7 }}>{subSelCount}/{items.length}</span>
+                            )}
+                          </button>
+                          {items.length > 1 && (
+                            <button onClick={() => setOpenSubs((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(subKey)) next.delete(subKey); else next.add(subKey);
+                              return next;
+                            })} style={{
+                              background: "none", border: "none", color: "var(--text-muted)",
+                              fontSize: 11, cursor: "pointer", padding: "4px 8px",
+                            }}>
+                              {items.length}개 {isSubOpen ? "▲" : "▼"}
+                            </button>
+                          )}
+                        </div>
+
+                        {/* 개별 재료 칩 (펼친 경우) */}
+                        {isSubOpen && items.length > 1 && (
+                          <div style={{ padding: "0 16px 10px 32px", display: "flex", flexWrap: "wrap", gap: 6 }}>
+                            {items.map((name) => (
+                              <Chip key={name} label={name} active={selected.has(name)} onClick={() => toggle(name)} />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })}
-            {Object.keys(filteredIngredients).length === 0 && (
+            {Object.keys(filteredHierarchy).length === 0 && (
               <p style={{ color: "var(--text-muted)", fontSize: 15, marginTop: 24, textAlign: "center" }}>
                 검색 결과가 없어요 😅
               </p>

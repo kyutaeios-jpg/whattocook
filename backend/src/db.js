@@ -28,10 +28,15 @@ async function migrate() {
   `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS ingredient_categories (
-      name     TEXT PRIMARY KEY,
-      category TEXT NOT NULL
+      name        TEXT PRIMARY KEY,
+      category    TEXT NOT NULL,
+      subcategory TEXT
     );
   `);
+  // subcategory 컬럼 추가 (기존 테이블에 없을 수 있음)
+  await pool.query(`
+    ALTER TABLE ingredient_categories ADD COLUMN IF NOT EXISTS subcategory TEXT;
+  `).catch(() => {});
   await pool.query(`
     CREATE TABLE IF NOT EXISTS ingredient_synonyms (
       alias     TEXT PRIMARY KEY,
@@ -69,20 +74,29 @@ async function getAllIngredientNames() {
 async function getCachedCategories(names) {
   if (!names.length) return {};
   const { rows } = await pool.query(
-    "SELECT name, category FROM ingredient_categories WHERE name = ANY($1)",
+    "SELECT name, category, subcategory FROM ingredient_categories WHERE name = ANY($1)",
     [names]
   );
   const map = {};
-  for (const r of rows) map[r.name] = r.category;
+  for (const r of rows) map[r.name] = { category: r.category, subcategory: r.subcategory || null };
+  return map;
+}
+
+async function getAllCachedCategories() {
+  const { rows } = await pool.query("SELECT name, category, subcategory FROM ingredient_categories");
+  const map = {};
+  for (const r of rows) map[r.name] = { category: r.category, subcategory: r.subcategory || null };
   return map;
 }
 
 async function saveCachedCategories(map) {
-  for (const [name, category] of Object.entries(map)) {
+  for (const [name, val] of Object.entries(map)) {
+    const category = typeof val === "string" ? val : val.category;
+    const subcategory = typeof val === "string" ? null : (val.subcategory || null);
     await pool.query(
-      `INSERT INTO ingredient_categories (name, category) VALUES ($1, $2)
-       ON CONFLICT (name) DO UPDATE SET category = $2`,
-      [name, category]
+      `INSERT INTO ingredient_categories (name, category, subcategory) VALUES ($1, $2, $3)
+       ON CONFLICT (name) DO UPDATE SET category = $2, subcategory = $3`,
+      [name, category, subcategory]
     );
   }
 }
@@ -168,6 +182,7 @@ module.exports = {
   deleteRecipe,
   deleteAllRecipes,
   getCachedCategories,
+  getAllCachedCategories,
   saveCachedCategories,
   getSynonyms,
   saveSynonyms,
