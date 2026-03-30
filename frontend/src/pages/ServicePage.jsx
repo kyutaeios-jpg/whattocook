@@ -689,7 +689,7 @@ export default function ServicePage() {
                               <span style={{ marginLeft: 6, fontSize: 11, opacity: 0.7 }}>{subSelCount}/{items.length}</span>
                             )}
                           </button>
-                          {items.length > 1 && (
+                          {(
                             <button onClick={() => setOpenSubs((prev) => {
                               const next = new Set(prev);
                               if (next.has(subKey)) next.delete(subKey); else next.add(subKey);
@@ -704,7 +704,7 @@ export default function ServicePage() {
                         </div>
 
                         {/* 개별 재료 칩 (펼친 경우) */}
-                        {isSubOpen && items.length > 1 && (
+                        {isSubOpen && (
                           <div style={{ padding: "0 16px 10px 32px", display: "flex", flexWrap: "wrap", gap: 6 }}>
                             {items.map((name) => (
                               <Chip key={name} label={name} active={selected.has(name)} onClick={() => toggle(name)} />
