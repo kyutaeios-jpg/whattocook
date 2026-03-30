@@ -158,41 +158,62 @@ app.post("/api/ingredients/suggest-synonyms", async (req, res) => {
     const allNames = await db.getAllIngredientNames();
     const existingSynonyms = await db.getSynonyms();
 
-    const prompt = `아래는 요리 재료 목록이야. 같은 재료인데 이름만 다른 것들을 찾아줘.
+    const synExamples = Object.entries(existingSynonyms).map(([a, c]) => `"${a}" → "${c}"`).join("\n");
 
-기존에 등록된 동의어 예시 (이 스타일을 참고해):
-${Object.entries(existingSynonyms).map(([a, c]) => `"${a}" → "${c}"`).join("\n")}
+    const basePrompt = `같은 재료인데 이름만 다른 것들을 찾아줘.
+
+기존 동의어 예시:
+${synExamples}
 
 규칙:
 - 표기법만 다른 것: "간 마늘"="다진 마늘", "달걀"="계란"
 - 공백 차이: "돈가스 소스"="돈가스소스" → 하나로 통합
-- 수식어 차이: "냉동 블루베리"→"블루베리", "다진 돼지고기"→"돼지고기 다짐육" 처럼 본질이 같으면 통합
-- 절대 다른 재료를 합치지 마: 삼겹살≠대패삼겹살, 참기름≠고추기름, 굵은 소금≠고운 소금
+- 수식어 차이: "냉동 블루베리"→"블루베리" 처럼 본질이 같으면 통합
+- 절대 다른 재료를 합치지 마: 삼겹살≠대패삼겹살, 참기름≠고추기름
 - 확신 없으면 포함하지 마
 - 대표명은 더 일반적이고 짧은 이름을 사용
 
-반드시 JSON 배열로만 응답해. 각 항목은 [별칭, 대표명] 형태.
-형식: [["별칭1", "대표명1"], ["별칭2", "대표명2"], ...]
+반드시 JSON 배열로만 응답해. 형식: [["별칭", "대표명"], ...]
 없으면 빈 배열 []
 
 재료 목록:
-${allNames.join(", ")}`;
+`;
 
-    const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 4096,
-      messages: [{ role: "user", content: prompt }],
-    });
+    // 100개씩 배치로 나눠서 Claude 호출
+    const allSuggestions = [];
+    for (let i = 0; i < allNames.length; i += 100) {
+      const batch = allNames.slice(i, i + 100);
+      try {
+        const message = await anthropic.messages.create({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 2048,
+          messages: [{ role: "user", content: basePrompt + batch.join(", ") }],
+        });
+        const parsed = parseClaudeJson(message.content[0].text);
+        if (Array.isArray(parsed)) {
+          allSuggestions.push(...parsed);
+        }
+        console.log(`[동의어 제안] 배치 ${Math.floor(i/100)+1}: ${parsed.length || 0}개`);
+      } catch (batchErr) {
+        console.error(`[동의어 제안] 배치 ${Math.floor(i/100)+1} 에러:`, batchErr.message);
+      }
+      if (i + 100 < allNames.length) await new Promise((r) => setTimeout(r, 1000));
+    }
 
-    const parsed = parseClaudeJson(message.content[0].text);
-    // 이미 등록된 동의어 제외
-    const suggestions = (Array.isArray(parsed) ? parsed : [])
+    // 이미 등록된 동의어 제외 + 중복 제거
+    const seen = new Set();
+    const suggestions = allSuggestions
       .filter(([alias, canonical]) =>
         alias && canonical && alias !== canonical && !existingSynonyms[alias]
       )
+      .filter(([alias]) => {
+        if (seen.has(alias)) return false;
+        seen.add(alias);
+        return true;
+      })
       .map(([alias, canonical]) => ({ alias, canonical }));
 
-    console.log(`[동의어 제안] ${suggestions.length}개 후보 생성`);
+    console.log(`[동의어 제안] 총 ${suggestions.length}개 후보`);
     res.json({ suggestions });
   } catch (err) {
     console.error("Suggest synonyms error:", err);
