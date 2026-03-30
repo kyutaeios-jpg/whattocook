@@ -5,7 +5,6 @@
 **한 줄 요약:** 냉장고 속 재료를 선택하면 만들 수 있는 YouTube 요리 레시피를 찾아주는 검색 엔진
 
 **URL:** https://cookable.today
-**어드민:** https://cookable.today/admin
 **GitHub:** https://github.com/kyutaeios-jpg/whattocook
 **타겟:** 20~30대 자취 초보 학생/사회 초년생
 
