@@ -503,6 +503,10 @@ export default function ServicePage() {
         const rawSub = (info && typeof info === "object") ? (info.subcategory || "기타") : "기타";
         const cat = `${EMOJI_MAP[rawCat] || "📦"} ${rawCat}`;
 
+        // 10회 이상 등장하는 재료만 아코디언에 표시
+        const freq = ingredientFrequency[key] || 0;
+        if (freq < 10) continue;
+
         if (!tree[cat]) tree[cat] = {};
         if (!tree[cat][rawSub]) tree[cat][rawSub] = [];
         tree[cat][rawSub].push(displayName);
@@ -527,22 +531,45 @@ export default function ServicePage() {
     return result;
   }, [recipes, ingredientCategoryMap, nameToDisplay, normalizeKey, classifyLoading, ingredientFrequency]);
 
-  // 검색 필터
+  // 전체 재료 목록 (검색용, 빈도 무관)
+  const allIngredientsList = useMemo(() => {
+    const seen = new Set();
+    const list = [];
+    for (const r of recipes) {
+      for (const ing of r.ingredients || []) {
+        const name = (typeof ing.name === "string" ? ing.name : "").trim();
+        if (!name) continue;
+        const key = normalizeKey(name);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        list.push(nameToDisplay[key] || name);
+      }
+    }
+    return list;
+  }, [recipes, normalizeKey, nameToDisplay]);
+
+  // 검색 필터 — 검색어 있으면 전체 재료에서 찾기
   const filteredHierarchy = useMemo(() => {
     if (!search.trim()) return ingredientHierarchy;
     const q = search.trim().toLowerCase();
+
+    // 전체 재료에서 검색 (빈도 무관)
+    const matched = allIngredientsList.filter((n) => n.toLowerCase().includes(q));
+    if (!matched.length) return {};
+
+    // 검색 결과를 카테고리/서브카테고리로 그룹핑
     const result = {};
-    for (const [cat, subs] of Object.entries(ingredientHierarchy)) {
-      const filteredSubs = {};
-      for (const [sub, items] of Object.entries(subs)) {
-        // 서브카테고리명 또는 재료명에 매칭
-        const filtered = items.filter((n) => n.toLowerCase().includes(q) || sub.toLowerCase().includes(q));
-        if (filtered.length) filteredSubs[sub] = filtered;
-      }
-      if (Object.keys(filteredSubs).length) result[cat] = filteredSubs;
+    for (const name of matched) {
+      const info = ingredientCategoryMap[name];
+      const rawCat = (info && typeof info === "object") ? info.category : (typeof info === "string" ? info : "기타");
+      const rawSub = (info && typeof info === "object") ? (info.subcategory || "기타") : "기타";
+      const cat = `${EMOJI_MAP[rawCat] || "📦"} ${rawCat}`;
+      if (!result[cat]) result[cat] = {};
+      if (!result[cat][rawSub]) result[cat][rawSub] = [];
+      result[cat][rawSub].push(name);
     }
     return result;
-  }, [ingredientHierarchy, search]);
+  }, [ingredientHierarchy, search, allIngredientsList, ingredientCategoryMap]);
 
   const selectedNorm = useMemo(() => {
     return new Set([...selected].map((s) => normalizeKey(s)));
