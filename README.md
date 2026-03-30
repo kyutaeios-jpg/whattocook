@@ -154,9 +154,8 @@ PostgreSQL 저장
 ## 5. 수익 모델
 
 ### 쿠팡 파트너스
-- 코드: `AF8567820`
 - 적용 위치: 상세 패널 부족 재료, 개별 레시피 페이지 재료 구매
-- URL 형식: `https://www.coupang.com/np/search?q={재료명}&lptag=AF8567820&pageType=SEARCH&pageValue={재료명}`
+- URL에 파트너스 코드 포함
 - 사용자가 링크 경유 구매 시 수수료 발생
 
 ### 네이버 쇼핑
