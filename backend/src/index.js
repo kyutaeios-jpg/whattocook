@@ -840,26 +840,46 @@ app.get("/recipe/:id", async (req, res) => {
     const url = `https://cookable.today/recipe/${recipe.id}`;
 
     // JSON-LD Recipe Schema
+    const ingredientNames = (recipe.ingredients || []).map((i) => typeof i.name === "string" ? i.name : "").filter(Boolean);
+    const keywords = [recipe.title, recipe.category, recipe.channel, ...ingredientNames.slice(0, 5)].filter(Boolean).join(", ");
+    const createdDate = recipe.createdAt ? new Date(recipe.createdAt).toISOString().split("T")[0] : "2026-03-29";
+
     const jsonLd = JSON.stringify({
       "@context": "https://schema.org",
       "@type": "Recipe",
       name: recipe.title,
+      url,
       author: { "@type": "Person", name: recipe.channel || "뭐해먹지?" },
-      image: image,
+      datePublished: createdDate,
+      image: [image],
       description: description,
       recipeCategory: recipe.category,
       recipeCuisine: "Korean",
-      difficulty: recipe.difficulty,
-      ...(recipe.time ? { totalTime: recipe.time } : {}),
+      keywords: keywords,
+      prepTime: recipe.time ? `PT${recipe.time.replace(/[^0-9]/g, "")}M` : "PT10M",
+      cookTime: recipe.time ? `PT${recipe.time.replace(/[^0-9]/g, "")}M` : "PT20M",
+      totalTime: recipe.time ? `PT${parseInt(recipe.time.replace(/[^0-9]/g, "") || "30")}M` : "PT30M",
+      recipeYield: "2인분",
       recipeIngredient: (recipe.ingredients || []).map((i) =>
         typeof i.name === "string" ? `${i.name} ${i.amount || ""}`.trim() : ""
       ).filter(Boolean),
       recipeInstructions: (recipe.steps || []).map((step, i) => ({
         "@type": "HowToStep",
         position: i + 1,
+        name: `${i + 1}단계`,
         text: typeof step === "string" ? step : "",
+        url: `${url}#step${i + 1}`,
+        image: image,
       })),
-      ...(recipe.url ? { video: { "@type": "VideoObject", name: recipe.title, embedUrl: `https://www.youtube.com/embed/${ytId}`, thumbnailUrl: image } } : {}),
+      ...(recipe.url && ytId ? { video: {
+        "@type": "VideoObject",
+        name: recipe.title,
+        description: description,
+        thumbnailUrl: image,
+        embedUrl: `https://www.youtube.com/embed/${ytId}`,
+        contentUrl: recipe.url,
+        uploadDate: createdDate,
+      }} : {}),
     });
 
     // HTML에 메타태그 + JSON-LD 삽입
