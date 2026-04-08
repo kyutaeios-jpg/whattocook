@@ -5,6 +5,7 @@ const cors = require("cors");
 const Anthropic = require("@anthropic-ai/sdk").default;
 const db = require("./db");
 const yt = require("./youtube");
+const indexing = require("./indexing");
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -917,6 +918,12 @@ app.get("/recipe/:id", async (req, res) => {
   }
 });
 
+// ── 수동 색인 트리거 ──
+app.post("/api/indexing/run", async (_req, res) => {
+  indexing.runBatch();
+  res.json({ status: "started" });
+});
+
 // ── SPA fallback ──
 
 app.use((req, res, next) => {
@@ -931,5 +938,6 @@ app.use((req, res, next) => {
 db.migrate().then(() => {
   app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    indexing.scheduleDaily();
   });
 });
