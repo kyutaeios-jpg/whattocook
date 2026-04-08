@@ -842,7 +842,8 @@ app.get("/recipe/:id", async (req, res) => {
     // JSON-LD Recipe Schema
     const ingredientNames = (recipe.ingredients || []).map((i) => typeof i.name === "string" ? i.name : "").filter(Boolean);
     const keywords = [recipe.title, recipe.category, recipe.channel, ...ingredientNames.slice(0, 5)].filter(Boolean).join(", ");
-    const createdDate = recipe.createdAt ? new Date(recipe.createdAt).toISOString().split("T")[0] : "2026-03-29";
+    const createdDate = recipe.createdAt ? new Date(recipe.createdAt).toISOString() : "2026-03-29T00:00:00+09:00";
+    const timeMinutes = recipe.time ? parseInt(recipe.time.replace(/[^0-9]/g, "") || "30") : null;
 
     const jsonLd = JSON.stringify({
       "@context": "https://schema.org",
@@ -852,30 +853,37 @@ app.get("/recipe/:id", async (req, res) => {
       author: { "@type": "Person", name: recipe.channel || "뭐해먹지?" },
       datePublished: createdDate,
       image: [image],
-      description: description,
-      recipeCategory: recipe.category,
+      description: description || `${recipe.title} 레시피`,
+      recipeCategory: recipe.category || "기타",
       recipeCuisine: "Korean",
-      keywords: keywords,
-      prepTime: recipe.time ? `PT${recipe.time.replace(/[^0-9]/g, "")}M` : "PT10M",
-      cookTime: recipe.time ? `PT${recipe.time.replace(/[^0-9]/g, "")}M` : "PT20M",
-      totalTime: recipe.time ? `PT${parseInt(recipe.time.replace(/[^0-9]/g, "") || "30")}M` : "PT30M",
+      keywords: keywords || recipe.title,
+      prepTime: `PT${timeMinutes ? Math.max(1, Math.floor(timeMinutes * 0.3)) : 10}M`,
+      cookTime: `PT${timeMinutes || 20}M`,
+      totalTime: `PT${timeMinutes || 30}M`,
       recipeYield: "2인분",
+      nutrition: {
+        "@type": "NutritionInformation",
+        calories: "정보 없음",
+      },
       recipeIngredient: (recipe.ingredients || []).map((i) =>
         typeof i.name === "string" ? `${i.name} ${i.amount || ""}`.trim() : ""
       ).filter(Boolean),
-      recipeInstructions: (recipe.steps || []).map((step, i) => ({
-        "@type": "HowToStep",
-        position: i + 1,
-        name: `${i + 1}단계`,
-        text: typeof step === "string" ? step : "",
-        url: `${url}#step${i + 1}`,
-        image: image,
-      })),
+      recipeInstructions: (recipe.steps || []).map((step, i) => {
+        const text = typeof step === "string" ? step : "";
+        return {
+          "@type": "HowToStep",
+          position: i + 1,
+          name: text.slice(0, 50) || `${i + 1}단계`,
+          text: text || `${i + 1}단계`,
+          url: `${url}#step${i + 1}`,
+          image: image,
+        };
+      }),
       ...(recipe.url && ytId ? { video: {
         "@type": "VideoObject",
         name: recipe.title,
-        description: description,
-        thumbnailUrl: image,
+        description: description || `${recipe.title} 레시피 영상`,
+        thumbnailUrl: [image],
         embedUrl: `https://www.youtube.com/embed/${ytId}`,
         contentUrl: recipe.url,
         uploadDate: createdDate,
