@@ -19,6 +19,7 @@
   },
   "homepage": "https://github.com/kyutaeios-jpg/whattocook#readme",
   "dependencies": {
+    "googleapis": "^171.4.0",
     "sharp": "^0.34.5"
   }
 }
