@@ -10,6 +10,23 @@ const SITEMAP_URL = "https://cookable.today/sitemap.xml";
 const BATCH_SIZE = 200;
 const DELAY_MS = 300;
 
+const TG_BOT_TOKEN = process.env.TG_BOT_TOKEN;
+const TG_CHAT_ID = process.env.TG_CHAT_ID;
+
+function sendTelegram(text) {
+  if (!TG_BOT_TOKEN || !TG_CHAT_ID) return;
+  const data = JSON.stringify({ chat_id: TG_CHAT_ID, text, parse_mode: "HTML" });
+  const req = https.request({
+    hostname: "api.telegram.org",
+    path: `/bot${TG_BOT_TOKEN}/sendMessage`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+  req.on("error", (e) => console.error("[telegram]", e.message));
+  req.write(data);
+  req.end();
+}
+
 // 배치 상태 (메모리 — 서버 재시작 시 0부터 다시 시작, 어차피 재요청해도 무해)
 let nextBatch = 0;
 
@@ -81,7 +98,9 @@ async function runBatch() {
       if (i < urls.length - 1) await new Promise((r) => setTimeout(r, DELAY_MS));
     }
 
+    const msg = `🔍 <b>색인 배치 ${nextBatch + 1}/${totalBatches}</b>\n성공: ${success} / 실패: ${fail}`;
     console.log(`[indexing] 배치 ${nextBatch + 1}/${totalBatches} 완료: 성공 ${success}, 실패 ${fail}`);
+    sendTelegram(msg);
     nextBatch++;
   } catch (err) {
     console.error(`[indexing] 에러:`, err.message);
