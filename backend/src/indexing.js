@@ -98,7 +98,7 @@ async function runBatch() {
       if (i < urls.length - 1) await new Promise((r) => setTimeout(r, DELAY_MS));
     }
 
-    const msg = `🔍 <b>색인 배치 ${nextBatch + 1}/${totalBatches}</b>\n성공: ${success} / 실패: ${fail}`;
+    const msg = `🔍 <b>[cookable] 색인 배치 ${nextBatch + 1}/${totalBatches}</b>\n성공: ${success} / 실패: ${fail}`;
     console.log(`[indexing] 배치 ${nextBatch + 1}/${totalBatches} 완료: 성공 ${success}, 실패 ${fail}`);
     sendTelegram(msg);
     nextBatch++;
