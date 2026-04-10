@@ -5,6 +5,7 @@
 
 const { google } = require("googleapis");
 const https = require("https");
+const db = require("./db");
 
 const SITEMAP_URL = "https://cookable.today/sitemap.xml";
 const BATCH_SIZE = 200;
@@ -26,9 +27,6 @@ function sendTelegram(text) {
   req.write(data);
   req.end();
 }
-
-// 배치 상태 (메모리 — 서버 재시작 시 0부터 다시 시작, 어차피 재요청해도 무해)
-let nextBatch = 0;
 
 function getAuth() {
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT;
@@ -65,6 +63,9 @@ async function runBatch() {
   if (!auth) return;
 
   try {
+    const state = await db.getIndexingState();
+    let nextBatch = state.next_batch;
+
     const allUrls = await fetchSitemapUrls();
     const totalBatches = Math.ceil(allUrls.length / BATCH_SIZE);
 
@@ -101,9 +102,11 @@ async function runBatch() {
     const msg = `🔍 <b>[cookable] 색인 배치 ${nextBatch + 1}/${totalBatches}</b>\n성공: ${success} / 실패: ${fail}`;
     console.log(`[indexing] 배치 ${nextBatch + 1}/${totalBatches} 완료: 성공 ${success}, 실패 ${fail}`);
     sendTelegram(msg);
-    nextBatch++;
+
+    await db.saveIndexingState(nextBatch + 1, { success, fail });
   } catch (err) {
     console.error(`[indexing] 에러:`, err.message);
+    sendTelegram(`❌ <b>[cookable] 색인 에러</b>\n${err.message}`);
   }
 }
 
