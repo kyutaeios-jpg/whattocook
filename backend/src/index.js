@@ -10,6 +10,16 @@ const indexing = require("./indexing");
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// 한글 제목 → URL slug 생성
+function toSlug(title) {
+  return (title || "")
+    .trim()
+    .replace(/[^\p{L}\p{N}\s-]/gu, "")
+    .replace(/\s+/g, "-")
+    .toLowerCase()
+    .slice(0, 80) || "recipe";
+}
+
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
@@ -59,6 +69,18 @@ app.get("/api/recipes/:id", async (req, res) => {
     const recipe = await db.getRecipeById(req.params.id);
     if (!recipe) return res.status(404).json({ error: "not found" });
     res.json(recipe);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 관련 레시피 (같은 카테고리, 최대 6개)
+app.get("/api/recipes/:id/related", async (req, res) => {
+  try {
+    const recipe = await db.getRecipeById(req.params.id);
+    if (!recipe) return res.status(404).json({ error: "not found" });
+    const related = await db.getRelatedRecipes(recipe.id, recipe.category, 6);
+    res.json(related.map((r) => ({ ...r, slug: toSlug(r.title) })));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -802,9 +824,10 @@ app.get("/sitemap.xml", async (_req, res) => {
     const recipes = await db.getAllRecipes();
     const urls = recipes.map((r) => `
   <url>
-    <loc>https://cookable.today/recipe/${r.id}</loc>
+    <loc>https://cookable.today/recipe/${r.id}/${toSlug(r.title)}</loc>
     <lastmod>${new Date(r.createdAt).toISOString().split("T")[0]}</lastmod>
     <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
   </url>`).join("");
 
     res.set("Content-Type", "application/xml");
@@ -827,18 +850,24 @@ const fs = require("fs");
 let indexHtml = "";
 try { indexHtml = fs.readFileSync(path.join(publicDir, "index.html"), "utf8"); } catch {}
 
-app.get("/recipe/:id", async (req, res) => {
+app.get("/recipe/:id/:slug?", async (req, res) => {
   try {
     const recipe = await db.getRecipeById(req.params.id);
     if (!recipe || !indexHtml) {
       return res.send(indexHtml || "Not found");
     }
 
+    // slug가 없으면 slug 포함 URL로 리다이렉트
+    const correctSlug = toSlug(recipe.title);
+    if (!req.params.slug) {
+      return res.redirect(301, `/recipe/${recipe.id}/${correctSlug}`);
+    }
+
     const title = `${recipe.title} - 뭐해먹지?`;
     const description = `${recipe.channel}의 ${recipe.title} 레시피. 재료: ${(recipe.ingredients || []).slice(0, 6).map((i) => typeof i.name === "string" ? i.name : "").filter(Boolean).join(", ")} 등`;
     const ytId = recipe.youtubeId || "";
     const image = ytId ? `https://img.youtube.com/vi/${ytId}/hqdefault.jpg` : "https://cookable.today/icons/icon-512x512.png";
-    const url = `https://cookable.today/recipe/${recipe.id}`;
+    const url = `https://cookable.today/recipe/${recipe.id}/${correctSlug}`;
 
     // JSON-LD Recipe Schema
     const ingredientNames = (recipe.ingredients || []).map((i) => typeof i.name === "string" ? i.name : "").filter(Boolean);

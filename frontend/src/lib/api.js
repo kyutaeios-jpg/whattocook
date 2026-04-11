@@ -1,5 +1,20 @@
 const API_URL = import.meta.env.VITE_API_URL || "";
 
+// ── 유틸리티 ──
+
+export function toSlug(title) {
+  return (title || "")
+    .trim()
+    .replace(/[^\p{L}\p{N}\s-]/gu, "")
+    .replace(/\s+/g, "-")
+    .toLowerCase()
+    .slice(0, 80) || "recipe";
+}
+
+export function recipeUrl(recipe) {
+  return `/recipe/${recipe.id}/${toSlug(recipe.title)}`;
+}
+
 // ── 레시피 CRUD ──
 
 export async function fetchRecipes() {
@@ -44,6 +59,12 @@ export async function deleteAllRecipesApi() {
     method: "DELETE",
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function fetchRelatedRecipes(id) {
+  const res = await fetch(`${API_URL}/api/recipes/${id}/related`);
+  if (!res.ok) return [];
   return res.json();
 }
 

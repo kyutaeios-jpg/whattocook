@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
+import { fetchRelatedRecipes, toSlug } from "../lib/api";
 
 const API_URL = import.meta.env.VITE_API_URL || "";
 const COUPANG_LPTAG = "AF8567820";
@@ -85,7 +86,7 @@ function RecipeShoppingLinks({ ingredients }) {
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 8 }}>
         {ingredients.map((ing, i) => (
-          <a key={i} href={shopUrl(ing.name, shop)} target="_blank" rel="noopener noreferrer"
+          <a key={i} href={shopUrl(ing.name, shop)} target="_blank" rel="sponsored noopener noreferrer"
             style={{
               display: "flex", alignItems: "center", gap: 8, padding: "10px 14px",
               borderRadius: 10, background: "var(--bg-input)", color: "var(--accent)",
@@ -102,12 +103,18 @@ function RecipeShoppingLinks({ ingredients }) {
 export default function RecipePage() {
   const { id } = useParams();
   const [recipe, setRecipe] = useState(null);
+  const [related, setRelated] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    setLoading(true);
+    setRelated([]);
     fetch(`${API_URL}/api/recipes/${id}`)
       .then((r) => r.ok ? r.json() : null)
-      .then(setRecipe)
+      .then((data) => {
+        setRecipe(data);
+        if (data) fetchRelatedRecipes(id).then(setRelated).catch(() => {});
+      })
       .catch(() => setRecipe(null))
       .finally(() => setLoading(false));
   }, [id]);
@@ -154,6 +161,14 @@ export default function RecipePage() {
             allowFullScreen
             style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: "none" }}
           />
+          <noscript>
+            <img
+              src={`https://img.youtube.com/vi/${ytId}/hqdefault.jpg`}
+              alt={`${recipe.title} 레시피 영상`}
+              width="480" height="360"
+              style={{ width: "100%", height: "auto" }}
+            />
+          </noscript>
         </div>
       )}
 
@@ -198,6 +213,35 @@ export default function RecipePage() {
 
       {/* 재료 구매 */}
       {ingredients.length > 0 && <RecipeShoppingLinks ingredients={ingredients} />}
+
+      {/* 관련 레시피 */}
+      {related.length > 0 && (
+        <div style={{ marginBottom: 28 }}>
+          <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--text-bright)", marginBottom: 12 }}>비슷한 레시피</h2>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 10 }}>
+            {related.map((r) => (
+              <Link key={r.id} to={`/recipe/${r.id}/${r.slug || toSlug(r.title)}`} style={{
+                display: "flex", flexDirection: "column", gap: 6,
+                padding: 12, borderRadius: 12, background: "var(--bg-input)",
+                textDecoration: "none", color: "inherit",
+              }}>
+                {r.youtubeId && (
+                  <img
+                    src={`https://img.youtube.com/vi/${r.youtubeId}/mqdefault.jpg`}
+                    alt={`${r.title} 썸네일`}
+                    style={{ width: "100%", borderRadius: 8, aspectRatio: "16/9", objectFit: "cover" }}
+                    loading="lazy"
+                  />
+                )}
+                <span style={{ fontSize: 14, fontWeight: 600, color: "var(--text-bright)", lineHeight: 1.4 }}>
+                  {r.title}
+                </span>
+                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{r.channel}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

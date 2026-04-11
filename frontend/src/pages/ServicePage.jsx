@@ -5,7 +5,7 @@ import {
   getAllIngredients,
   getAllCategories,
 } from "../lib/recipes";
-import { fetchRecipes, fetchCachedCategories, fetchSynonyms } from "../lib/api";
+import { fetchRecipes, fetchCachedCategories, fetchSynonyms, toSlug } from "../lib/api";
 
 /* ───── 카테고리 이모지 ───── */
 const EMOJI = {
@@ -199,7 +199,7 @@ function SelectedTags({ selected, toggle, clearAll }) {
 
 function ShareButton({ recipe, style = {} }) {
   const [copied, setCopied] = useState(false);
-  const url = `https://cookable.today/recipe/${recipe.id}`;
+  const url = `https://cookable.today/recipe/${recipe.id}/${toSlug(recipe.title)}`;
   const text = `${recipe.title} - 뭐해먹지?`;
 
   const handleShare = async (e) => {

@@ -174,6 +174,17 @@ function toRecipe(row) {
   };
 }
 
+async function getRelatedRecipes(excludeId, category, limit = 6) {
+  const { rows } = await pool.query(
+    `SELECT * FROM recipes
+     WHERE id != $1 AND category = $2
+     ORDER BY created_at DESC
+     LIMIT $3`,
+    [excludeId, category, limit]
+  );
+  return rows.map(toRecipe);
+}
+
 async function findByYoutubeId(youtubeId) {
   const { rows } = await pool.query(
     "SELECT * FROM recipes WHERE youtube_id = $1",
@@ -199,6 +210,7 @@ module.exports = {
   migrate,
   getAllRecipes,
   getRecipeById,
+  getRelatedRecipes,
   findByYoutubeId,
   createRecipe,
   updateRecipe,
