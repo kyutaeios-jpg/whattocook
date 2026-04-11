@@ -1,7 +1,7 @@
 {
-  "name": "뭐해먹지?",
+  "name": "뭐해먹지? (Cookable)",
   "short_name": "뭐해먹지",
-  "description": "냉장고 속 재료로 만들 수 있는 레시피를 찾아보세요",
+  "description": "냉장고 속 재료로 만들 수 있는 레시피를 찾아보세요 — Cookable",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#faf9f6",
