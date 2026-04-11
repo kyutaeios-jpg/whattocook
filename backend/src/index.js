@@ -850,7 +850,7 @@ const fs = require("fs");
 let indexHtml = "";
 try { indexHtml = fs.readFileSync(path.join(publicDir, "index.html"), "utf8"); } catch {}
 
-app.get("/recipe/:id/:slug?", async (req, res) => {
+app.get("/recipe/:id{/:slug}", async (req, res) => {
   try {
     const recipe = await db.getRecipeById(req.params.id);
     if (!recipe || !indexHtml) {
