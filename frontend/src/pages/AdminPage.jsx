@@ -15,6 +15,7 @@ import {
   cleanupIngredients,
   fetchIngredientCategories,
   updateIngredientCategories,
+  setAdminPassword,
 } from "../lib/api";
 
 /* ───── 색상 토큰 (청색 포인트) ───── */
@@ -90,6 +91,7 @@ function LoginGate({ onAuth }) {
         body: JSON.stringify({ password: pw }),
       });
       if (res.ok) {
+        setAdminPassword(pw);
         onAuth();
       } else {
         setShake(true);

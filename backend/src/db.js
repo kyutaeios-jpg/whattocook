@@ -43,17 +43,6 @@ async function migrate() {
       canonical TEXT NOT NULL
     );
   `);
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS indexing_state (
-      id          INT PRIMARY KEY DEFAULT 1,
-      next_batch  INT NOT NULL DEFAULT 0,
-      last_run    TIMESTAMPTZ,
-      last_result JSONB
-    );
-  `);
-  await pool.query(`
-    INSERT INTO indexing_state (id, next_batch) VALUES (1, 0) ON CONFLICT DO NOTHING;
-  `);
   console.log("DB migration done");
 }
 
@@ -193,18 +182,6 @@ async function findByYoutubeId(youtubeId) {
   return rows[0] ? toRecipe(rows[0]) : null;
 }
 
-async function getIndexingState() {
-  const { rows } = await pool.query("SELECT * FROM indexing_state WHERE id = 1");
-  return rows[0] || { next_batch: 0 };
-}
-
-async function saveIndexingState(nextBatch, result) {
-  await pool.query(
-    `UPDATE indexing_state SET next_batch = $1, last_run = now(), last_result = $2 WHERE id = 1`,
-    [nextBatch, JSON.stringify(result)]
-  );
-}
-
 module.exports = {
   pool,
   migrate,
@@ -222,6 +199,4 @@ module.exports = {
   getSynonyms,
   saveSynonyms,
   getAllIngredientNames,
-  getIndexingState,
-  saveIndexingState,
 };

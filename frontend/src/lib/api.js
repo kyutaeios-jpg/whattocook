@@ -1,5 +1,19 @@
 const API_URL = import.meta.env.VITE_API_URL || "";
 
+// ── Admin 인증 ──
+
+export function setAdminPassword(pw) {
+  sessionStorage.setItem("admin_pw", pw);
+}
+
+export function getAdminPassword() {
+  return sessionStorage.getItem("admin_pw") || "";
+}
+
+function adminHeaders() {
+  return { "x-admin-password": getAdminPassword() };
+}
+
 // ── 유틸리티 ──
 
 export function toSlug(title) {
@@ -26,7 +40,7 @@ export async function fetchRecipes() {
 export async function createRecipe(recipe) {
   const res = await fetch(`${API_URL}/api/recipes`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...adminHeaders() },
     body: JSON.stringify(recipe),
   });
   if (!res.ok) {
@@ -39,7 +53,7 @@ export async function createRecipe(recipe) {
 export async function updateRecipe(id, recipe) {
   const res = await fetch(`${API_URL}/api/recipes/${id}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...adminHeaders() },
     body: JSON.stringify(recipe),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -49,6 +63,7 @@ export async function updateRecipe(id, recipe) {
 export async function deleteRecipeApi(id) {
   const res = await fetch(`${API_URL}/api/recipes/${id}`, {
     method: "DELETE",
+    headers: adminHeaders(),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
@@ -57,6 +72,7 @@ export async function deleteRecipeApi(id) {
 export async function deleteAllRecipesApi() {
   const res = await fetch(`${API_URL}/api/recipes`, {
     method: "DELETE",
+    headers: adminHeaders(),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
@@ -131,13 +147,13 @@ export async function suggestSynonyms() {
 }
 
 export async function deleteSynonyms() {
-  const res = await fetch(`${API_URL}/api/ingredients/synonyms`, { method: "DELETE" });
+  const res = await fetch(`${API_URL}/api/ingredients/synonyms`, { method: "DELETE", headers: adminHeaders() });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
 
 export async function cleanupIngredients() {
-  const res = await fetch(`${API_URL}/api/ingredients/cleanup`, { method: "POST" });
+  const res = await fetch(`${API_URL}/api/ingredients/cleanup`, { method: "POST", headers: adminHeaders() });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
@@ -147,7 +163,7 @@ export async function cleanupIngredients() {
 export async function extractRecipe(url) {
   const res = await fetch(`${API_URL}/api/extract`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...adminHeaders() },
     body: JSON.stringify({ url }),
   });
   if (!res.ok) {
@@ -162,7 +178,7 @@ export async function extractRecipe(url) {
 export async function startChannelExtract(url) {
   const res = await fetch(`${API_URL}/api/extract/channel`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...adminHeaders() },
     body: JSON.stringify({ url }),
   });
   if (!res.ok) {

@@ -5,7 +5,7 @@ const cors = require("cors");
 const Anthropic = require("@anthropic-ai/sdk").default;
 const db = require("./db");
 const yt = require("./youtube");
-const indexing = require("./indexing");
+const seo = require("./seo");
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -30,9 +30,24 @@ const publicDir = path.join(__dirname, "..", "public");
 app.use(express.static(publicDir));
 
 // CORS 설정
-app.use(cors());
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(",")
+  : ["https://cookable.today", "http://localhost:5173", "http://localhost:3001"];
+app.use(cors({ origin: ALLOWED_ORIGINS }));
 
-app.use(express.json());
+app.use(express.json({ limit: "1mb" }));
+
+// 보안 헤더
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  next();
+});
+
+// UUID 검증 헬퍼
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isValidUUID(s) { return UUID_RE.test(s); }
 
 // 헬스체크
 app.get("/api/health", (_req, res) => {
@@ -43,7 +58,27 @@ app.get("/api/health", (_req, res) => {
 
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin1234";
 
+// 로그인 rate limiting (IP별 5회/15분)
+const loginAttempts = new Map();
+const LOGIN_MAX = 5;
+const LOGIN_WINDOW = 15 * 60 * 1000;
+
+function checkLoginRate(ip) {
+  const now = Date.now();
+  const record = loginAttempts.get(ip);
+  if (!record || now - record.start > LOGIN_WINDOW) {
+    loginAttempts.set(ip, { start: now, count: 1 });
+    return true;
+  }
+  record.count++;
+  return record.count <= LOGIN_MAX;
+}
+
 app.post("/api/admin/login", (req, res) => {
+  const ip = req.ip || req.socket.remoteAddress;
+  if (!checkLoginRate(ip)) {
+    return res.status(429).json({ error: "너무 많은 시도입니다. 15분 후 다시 시도해주세요." });
+  }
   const { password } = req.body;
   if (password === ADMIN_PASSWORD) {
     res.json({ ok: true });
@@ -51,6 +86,15 @@ app.post("/api/admin/login", (req, res) => {
     res.status(401).json({ error: "비밀번호가 틀립니다" });
   }
 });
+
+// 어드민 인증 미들웨어 (비밀번호 헤더 확인)
+function requireAdmin(req, res, next) {
+  const pw = req.headers["x-admin-password"];
+  if (pw !== ADMIN_PASSWORD) {
+    return res.status(401).json({ error: "인증이 필요합니다" });
+  }
+  next();
+}
 
 // ── 레시피 CRUD ──
 
@@ -60,33 +104,40 @@ app.get("/api/recipes", async (_req, res) => {
     res.json(recipes);
   } catch (err) {
     console.error("GET /api/recipes error:", err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: "레시피 목록을 불러올 수 없습니다" });
   }
 });
 
 app.get("/api/recipes/:id", async (req, res) => {
+  if (!isValidUUID(req.params.id)) return res.status(400).json({ error: "invalid id" });
   try {
     const recipe = await db.getRecipeById(req.params.id);
     if (!recipe) return res.status(404).json({ error: "not found" });
     res.json(recipe);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("GET /api/recipes/:id error:", err);
+    res.status(500).json({ error: "레시피를 불러올 수 없습니다" });
   }
 });
 
 // 관련 레시피 (같은 카테고리, 최대 6개)
 app.get("/api/recipes/:id/related", async (req, res) => {
+  if (!isValidUUID(req.params.id)) return res.status(400).json({ error: "invalid id" });
   try {
     const recipe = await db.getRecipeById(req.params.id);
     if (!recipe) return res.status(404).json({ error: "not found" });
     const related = await db.getRelatedRecipes(recipe.id, recipe.category, 6);
     res.json(related.map((r) => ({ ...r, slug: toSlug(r.title) })));
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("GET /api/recipes/:id/related error:", err);
+    res.status(500).json({ error: "관련 레시피를 불러올 수 없습니다" });
   }
 });
 
-app.post("/api/recipes", async (req, res) => {
+app.post("/api/recipes", requireAdmin, async (req, res) => {
+  const { title, ingredients } = req.body;
+  if (!title || typeof title !== "string") return res.status(400).json({ error: "title is required" });
+  if (ingredients && !Array.isArray(ingredients)) return res.status(400).json({ error: "ingredients must be an array" });
   try {
     const recipe = await db.createRecipe(req.body);
     res.status(201).json(recipe);
@@ -96,7 +147,8 @@ app.post("/api/recipes", async (req, res) => {
   }
 });
 
-app.put("/api/recipes/:id", async (req, res) => {
+app.put("/api/recipes/:id", requireAdmin, async (req, res) => {
+  if (!isValidUUID(req.params.id)) return res.status(400).json({ error: "invalid id" });
   try {
     const recipe = await db.updateRecipe(req.params.id, req.body);
     if (!recipe) return res.status(404).json({ error: "not found" });
@@ -106,7 +158,8 @@ app.put("/api/recipes/:id", async (req, res) => {
   }
 });
 
-app.delete("/api/recipes/:id", async (req, res) => {
+app.delete("/api/recipes/:id", requireAdmin, async (req, res) => {
+  if (!isValidUUID(req.params.id)) return res.status(400).json({ error: "invalid id" });
   try {
     await db.deleteRecipe(req.params.id);
     res.json({ ok: true });
@@ -121,7 +174,8 @@ app.get("/api/ingredients/synonyms", async (_req, res) => {
     const synonyms = await db.getSynonyms();
     res.json(synonyms);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("GET /api/ingredients/synonyms error:", err);
+    res.status(500).json({ error: "동의어를 불러올 수 없습니다" });
   }
 });
 
@@ -131,12 +185,13 @@ app.get("/api/ingredients/cached-categories", async (_req, res) => {
     const cached = await db.getAllCachedCategories();
     res.json(cached);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("GET /api/ingredients/cached-categories error:", err);
+    res.status(500).json({ error: "카테고리를 불러올 수 없습니다" });
   }
 });
 
 // 서브카테고리 자동 분류 (Claude)
-app.post("/api/ingredients/assign-subcategories", async (req, res) => {
+app.post("/api/ingredients/assign-subcategories", requireAdmin, async (req, res) => {
   try {
     const cached = await db.getAllCachedCategories();
     // subcategory가 없는 재료만 대상
@@ -354,7 +409,7 @@ app.post("/api/ingredients/synonyms", async (req, res) => {
 });
 
 // 기존 DB의 재료 정리 (잘못된 재료 제거 + 동의어 적용)
-app.post("/api/ingredients/cleanup", async (_req, res) => {
+app.post("/api/ingredients/cleanup", requireAdmin, async (_req, res) => {
   try {
     const recipes = await db.getAllRecipes();
     const synonyms = await db.getSynonyms();
@@ -384,7 +439,7 @@ app.post("/api/ingredients/cleanup", async (_req, res) => {
 });
 
 // 동의어 테이블 초기화
-app.delete("/api/ingredients/synonyms", async (_req, res) => {
+app.delete("/api/ingredients/synonyms", requireAdmin, async (_req, res) => {
   try {
     await db.pool.query("DELETE FROM ingredient_synonyms");
     res.json({ ok: true });
@@ -394,7 +449,7 @@ app.delete("/api/ingredients/synonyms", async (_req, res) => {
 });
 
 // 재료 분류 캐시 초기화
-app.delete("/api/ingredients/cache", async (_req, res) => {
+app.delete("/api/ingredients/cache", requireAdmin, async (_req, res) => {
   try {
     await db.pool.query("DELETE FROM ingredient_categories");
     res.json({ ok: true });
@@ -403,7 +458,7 @@ app.delete("/api/ingredients/cache", async (_req, res) => {
   }
 });
 
-app.delete("/api/recipes", async (_req, res) => {
+app.delete("/api/recipes", requireAdmin, async (_req, res) => {
   try {
     await db.deleteAllRecipes();
     res.json({ ok: true });
@@ -530,12 +585,15 @@ async function processVideo(videoId, meta) {
     steps: parsed.steps || [],
   });
 
+  // 새 레시피 색인 알림 (비동기, 실패해도 무시)
+  seo.notifyNewUrl(`https://cookable.today/recipe/${recipe.id}/${toSlug(recipe.title)}`).catch(() => {});
+
   return { videoId, status: "ok", recipe };
 }
 
 // ── 단건 추출: POST /api/extract ──
 
-app.post("/api/extract", async (req, res) => {
+app.post("/api/extract", requireAdmin, async (req, res) => {
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: "url is required" });
 
@@ -643,7 +701,7 @@ app.post("/api/ingredients/classify", async (req, res) => {
 
 // ── 일괄 재추출: POST /api/reextract ──
 
-app.post("/api/reextract", async (req, res) => {
+app.post("/api/reextract", requireAdmin, async (req, res) => {
   const { recipeIds } = req.body;
   if (!recipeIds?.length) return res.status(400).json({ error: "recipeIds required" });
 
@@ -710,7 +768,7 @@ app.post("/api/reextract", async (req, res) => {
 
 const jobs = new Map(); // jobId → { status, progress, skipLog, error }
 
-app.post("/api/extract/channel", async (req, res) => {
+app.post("/api/extract/channel", requireAdmin, async (req, res) => {
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: "url is required" });
 
@@ -844,11 +902,34 @@ app.get("/sitemap.xml", async (_req, res) => {
   }
 });
 
+// ── RSS 피드 ──
+
+app.get("/rss.xml", async (_req, res) => {
+  try {
+    const recipes = await db.getAllRecipes();
+    res.set("Content-Type", "application/rss+xml; charset=utf-8");
+    res.send(seo.generateRss(recipes));
+  } catch (err) {
+    res.status(500).send("Error generating RSS");
+  }
+});
+
+// ── IndexNow 키 검증 파일 ──
+
+app.get(`/${seo.INDEXNOW_KEY}.txt`, (_req, res) => {
+  res.type("text/plain").send(seo.INDEXNOW_KEY);
+});
+
 // ── 레시피 페이지 (SEO: 동적 메타태그 + JSON-LD) ──
 
 const fs = require("fs");
 let indexHtml = "";
 try { indexHtml = fs.readFileSync(path.join(publicDir, "index.html"), "utf8"); } catch {}
+
+// HTML 속성 안전 이스케이프
+function escAttr(s) {
+  return String(s || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
 
 app.get("/recipe/:id{/:slug}", async (req, res) => {
   try {
@@ -922,20 +1003,20 @@ app.get("/recipe/:id{/:slug}", async (req, res) => {
 
     // HTML에 메타태그 + JSON-LD 삽입
     const html = indexHtml
-      .replace(/<title>[^<]*<\/title>/, `<title>${title}</title>`)
+      .replace(/<title>[^<]*<\/title>/, `<title>${escAttr(title)}</title>`)
       .replace(
         "</head>",
-        `<meta name="description" content="${description.replace(/"/g, "&quot;")}" />
-    <meta property="og:title" content="${title.replace(/"/g, "&quot;")}" />
-    <meta property="og:description" content="${description.replace(/"/g, "&quot;")}" />
-    <meta property="og:image" content="${image}" />
-    <meta property="og:url" content="${url}" />
+        `<meta name="description" content="${escAttr(description)}" />
+    <meta property="og:title" content="${escAttr(title)}" />
+    <meta property="og:description" content="${escAttr(description)}" />
+    <meta property="og:image" content="${escAttr(image)}" />
+    <meta property="og:url" content="${escAttr(url)}" />
     <meta property="og:type" content="article" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="${title.replace(/"/g, "&quot;")}" />
-    <meta name="twitter:description" content="${description.replace(/"/g, "&quot;")}" />
-    <meta name="twitter:image" content="${image}" />
-    <link rel="canonical" href="${url}" />
+    <meta name="twitter:title" content="${escAttr(title)}" />
+    <meta name="twitter:description" content="${escAttr(description)}" />
+    <meta name="twitter:image" content="${escAttr(image)}" />
+    <link rel="canonical" href="${escAttr(url)}" />
     <script type="application/ld+json">${jsonLd}</script>
     </head>`
       );
@@ -947,10 +1028,15 @@ app.get("/recipe/:id{/:slug}", async (req, res) => {
   }
 });
 
-// ── 수동 색인 트리거 ──
-app.post("/api/indexing/run", async (_req, res) => {
-  indexing.runBatch();
-  res.json({ status: "started" });
+// ── 수동 색인 알림 ──
+app.post("/api/seo/ping", requireAdmin, async (_req, res) => {
+  try {
+    const result = await seo.pingSitemap();
+    res.json(result);
+  } catch (err) {
+    console.error("SEO ping error:", err);
+    res.status(500).json({ error: "색인 알림 실패" });
+  }
 });
 
 // ── SPA fallback ──
@@ -962,11 +1048,22 @@ app.use((req, res, next) => {
   next();
 });
 
+// ── 글로벌 에러 핸들러 ──
+
+app.use((err, _req, res, _next) => {
+  console.error("Unhandled error:", err);
+  res.status(500).json({ error: "서버 오류가 발생했습니다" });
+});
+
+process.on("unhandledRejection", (err) => {
+  console.error("Unhandled rejection:", err);
+});
+
 // ── 서버 시작 ──
 
 db.migrate().then(() => {
   app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
-    indexing.scheduleDaily();
+    seo.init();
   });
 });

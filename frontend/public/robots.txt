@@ -3,3 +3,4 @@ Allow: /
 Disallow: /admin
 
 Sitemap: https://cookable.today/sitemap.xml
+RSS: https://cookable.today/rss.xml
